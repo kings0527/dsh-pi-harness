@@ -97,7 +97,7 @@ plugin_manager install_bundle target="C:\path\to\dsh-pi-harness"
 or install the local package directory from the Plugin Manager UI. The bundle
 package name is `@local/dsh-pi-harness`; it is deliberately not published to npm.
 
-### Directly from GitHub
+### Directly from a git spec (network permitting)
 
 `install_bundle` accepts a package spec:
 
@@ -105,7 +105,9 @@ package name is `@local/dsh-pi-harness`; it is deliberately not published to npm
 plugin_manager install_bundle target="github:kings0527/dsh-pi-harness"
 ```
 
-If your DSH build rejects git specs, clone first and install the directory.
+pnpm resolves `github:` over **HTTPS git**, which some networks block while SSH
+still works. If the install stalls or fails, clone the repository (SSH or HTTPS)
+and install the directory instead — that path only needs local files.
 
 ### Verify
 

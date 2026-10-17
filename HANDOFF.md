@@ -15,8 +15,13 @@ except the optional core patch described in §4.
 2. Clone this repository somewhere stable — **not** inside a temporary workspace:
 
    ```bash
+   git clone git@github.com:kings0527/dsh-pi-harness.git ~/git/dsh-pi-harness
+   # or, if HTTPS git works on this network:
    git clone https://github.com/kings0527/dsh-pi-harness.git ~/git/dsh-pi-harness
    ```
+
+   Prefer the clone over a `github:` install spec: pnpm resolves that over HTTPS,
+   which is blocked on some networks while SSH is not.
 
 3. Install the bundle:
 
