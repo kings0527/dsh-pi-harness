@@ -1,0 +1,4 @@
+- insert:
+    - id: pi-harness
+      name: '@local/dsh-pi-harness'
+      config: {}
