@@ -136,16 +136,31 @@ GUI 展开 thinking ──► cot-translation ──► translator(google) ─�
 | `modelPath` | `~/hy-mt2-1.8b-q4km.gguf` | 自动拉起时加载的 GGUF |
 | `llamaServerPath` | `~/llama.cpp/llama-b10796/llama-server` | 自动拉起用的二进制 |
 | `autoStart` | `true` | 上游没起来时自动 spawn |
-| `maxChars` | `3000` | 单个翻译单元上限（按行切） |
+| `maxChars` | `1000` | 单个翻译单元上限（按行切）——见下方「上下文」 |
+| `maxOutputTokens` | `1024` | 单次生成上限 |
 | `maxConcurrent` | `4` | 并发上限，防止长 thinking 打爆模型 |
 
 行为要点：
 
 - **围栏代码块整块保护**：``` / ~~~ 内的行原样保留，不翻译、不替换。
 - **单行失败不毁整段**：某个翻译单元失败就保留该行原文，整段照样返回。
+- **截断不再假装成功**：上游返回 `finish_reason: "length"`（撞到上下文/生成上限）
+  时，这个单元的译文是残句，不能当成功。shim 会把它对半切开递归重译，切开后仍
+  截断就保留原文，绝不把半个中文句子当成完整译文交出去。
 - **端口已被占用就复用**：多个 DSH 实例共享同一个 shim（`/health` 里有
   `tag: dsh-local-translator` 作为身份标记）。
 - **失败软着陆**：shim 起不来不会拖垮 Host，GUI 侧只会看到普通的翻译失败。
+
+#### 上下文大小（`maxChars` 为什么是 1000）
+
+pi-translate 拉起 `llama-server` 时用的是 `--ctx-size 4096 --parallel 2`，也就是
+**每个 slot 只有 2048 token**，而 shim 默认就复用这台服务。英文密文接近
+0.5 token/字，再留出译文的空间，`maxChars = 3000` 会直接把上游顶到上限——
+实测 2980 字的单元 prompt+completion 正好等于 2048、`finish_reason: length`，
+译文被砍掉一半。`1000` 字 + `1024` 输出 token 留足了余量。
+
+如果你的 `llama-server` 用了更大的 `--ctx-size`，可以同步放大 `maxChars`；
+两者要一起改，光改一边会重新引入截断。
 
 改完 profile 后需要重启 DSH（`dsh web`）让 Host 重新挂载；页面刷新一次即可让
 GUI 侧拿到翻译工具栏。

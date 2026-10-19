@@ -17,6 +17,8 @@ import {
   splitLockedLines,
   startLocalTranslator,
   translateFragment,
+  translateUnit,
+  TranslationTruncatedError,
   DEFAULTS,
 } from './server.js'
 
@@ -282,4 +284,87 @@ test('the real DSH translator reads the shim as a Google provider', async (t) =>
     const translated = await translateText(spec, config, new AbortController().signal)
     assert.equal(translated, 'ZH:first line\nsecond line')
   })
+})
+
+// --- truncation ------------------------------------------------------------
+//
+// Regression for a real defect: llama.cpp reports `finish_reason: "length"`
+// when a unit overflows its context, and still returns valid JSON with a
+// non-empty string. Treating that as success swaps a whole English paragraph
+// for the first half of a Chinese one, with no error anywhere.
+
+const lengthReply = (content) => ({
+  payload: { choices: [{ message: { content }, finish_reason: 'length' }] },
+})
+
+test('a truncated upstream reply is an error, not a translation', async () => {
+  const { server, port } = await startFakeUpstream(() => lengthReply('半句翻译'))
+  try {
+    const settings = { ...DEFAULTS, upstream: `http://127.0.0.1:${port}`, autoStart: false }
+    await assert.rejects(
+      () => translateUnit(settings, 'a whole english paragraph', 'zh-CN'),
+      (error) => error instanceof TranslationTruncatedError && /length/.test(error.message),
+    )
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('finish_reason "stop" is still a normal translation', async () => {
+  const { server, port } = await startFakeUpstream(() => ({
+    payload: { choices: [{ message: { content: '完整翻译' }, finish_reason: 'stop' }] },
+  }))
+  try {
+    const settings = { ...DEFAULTS, upstream: `http://127.0.0.1:${port}`, autoStart: false }
+    assert.equal(await translateUnit(settings, 'complete english text', 'zh-CN'), '完整翻译')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('a unit that overflows context is split and fully translated', async () => {
+  const seen = []
+  const { server, port } = await startFakeUpstream((body) => {
+    const source = body.messages[1].content
+    seen.push(source)
+    // Mirror the real server: anything above the context ceiling truncates.
+    if (source.length > 60) return lengthReply(`partial:${source.slice(0, 10)}`)
+    // Return CJK so the assertion below tests the shim, not the fake.
+    return {
+      payload: { choices: [{ message: { content: `译文${source.length}` }, finish_reason: 'stop' }] },
+    }
+  })
+  try {
+    const settings = { ...DEFAULTS, upstream: `http://127.0.0.1:${port}`, autoStart: false }
+    const long = `${'first sentence about the bridge and the board. '.repeat(4)}${'second half covers knowledge and handoff files. '.repeat(4)}`
+    const out = await translateFragment(settings, long.trim(), 'zh-CN', (task) => task())
+    // Every piece was translated; nothing truncated and no English survived.
+    assert.ok(!/partial:/.test(out), `truncated output leaked: ${out}`)
+    assert.ok(!/[a-zA-Z]{4,}/.test(out), `English survived: ${out}`)
+    // Every surviving piece is a real translation of its own slice.
+    assert.ok(/译文\d+/.test(out), `expected translated pieces: ${out}`)
+    // Truncation triggers a recursive halving, so the shim must have issued
+    // several progressively smaller attempts and finished under the ceiling.
+    assert.ok(seen.length > 2, `expected recursive splitting, saw ${seen.length} calls`)
+    assert.ok(Math.max(...seen.map((piece) => piece.length)) > 60, 'expected an oversized first attempt')
+    assert.ok(
+      Math.min(...seen.map((piece) => piece.length)) <= 60,
+      'expected at least one piece under the ceiling to complete',
+    )
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+test('the default unit size stays inside the shared per-slot context', () => {
+  // pi-translate runs `--ctx-size 4096 --parallel 2` = 2048 tokens per slot.
+  // Dense English approaches 0.5 tokens/char and the reply needs its own room,
+  // so a default unit must not approach that ceiling.
+  const perSlotContext = 2048
+  const worstCaseTokens = DEFAULTS.maxChars * 0.5
+  assert.ok(
+    worstCaseTokens + DEFAULTS.maxOutputTokens < perSlotContext,
+    `maxChars ${DEFAULTS.maxChars} can overflow a ${perSlotContext}-token slot ` +
+      `(worst case ${worstCaseTokens} + ${DEFAULTS.maxOutputTokens} output)`,
+  )
 })

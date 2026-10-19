@@ -24,7 +24,14 @@ export const DEFAULTS = {
   // The llama.cpp server this shim forwards to. pi-translate already owns 9911.
   upstream: 'http://127.0.0.1:9911',
   upstreamModel: 'qwen3-translate',
-  maxChars: 3000,
+  // Sized against the per-slot context, not against what looks like a nice
+  // number. pi-translate starts llama-server with `--ctx-size 4096 --parallel 2`,
+  // i.e. 2048 tokens per slot, and this shim usually reuses that server. English
+  // prose costs roughly 0.2 tokens/char but dense text approaches 0.5, and the
+  // reply needs room too, so 1000 chars leaves headroom instead of silently
+  // running the upstream into its ceiling.
+  maxChars: 1000,
+  maxOutputTokens: 1024,
   timeoutMs: 60_000,
   maxConcurrent: 4,
   // Auto-start a llama.cpp server when the upstream is down. The defaults are
@@ -138,6 +145,18 @@ async function fetchJson(url, { method = 'GET', body, timeoutMs } = {}) {
   return payload
 }
 
+/**
+ * The upstream ended the translation at its context/token ceiling, so what it
+ * returned is a prefix of the translation, not the whole thing. Returning that
+ * as success would silently swap one language for half a sentence in another.
+ */
+export class TranslationTruncatedError extends Error {
+  constructor(reason) {
+    super(`upstream truncated the translation (finish_reason: ${reason})`)
+    this.name = 'TranslationTruncatedError'
+  }
+}
+
 /** One translation call against the llama.cpp chat endpoint. */
 export async function translateUnit(settings, text, targetTag) {
   const payload = await fetchJson(`${settings.upstream}/v1/chat/completions`, {
@@ -147,14 +166,18 @@ export async function translateUnit(settings, text, targetTag) {
       model: settings.upstreamModel,
       messages: buildMessages(text, targetTag),
       temperature: 0,
-      max_tokens: 2048,
+      max_tokens: settings.maxOutputTokens,
       stream: false,
       // A thinking model would burn the whole budget on scratchpad; this is a
       // hard off switch that non-thinking GGUFs ignore.
       chat_template_kwargs: { enable_thinking: false },
     },
   })
-  const message = payload?.choices?.[0]?.message
+  const choice = payload?.choices?.[0]
+  // llama.cpp answers `length` when it ran out of context/token budget. The
+  // text is still valid JSON and non-empty, so only finish_reason exposes it.
+  if (choice?.finish_reason === 'length') throw new TranslationTruncatedError('length')
+  const message = choice?.message
   let out = String(message?.content ?? '').trim()
   if (!out && typeof message?.reasoning_content === 'string') out = message.reasoning_content.trim()
   out = out.replace(/<\/?think>/g, '').trim()
@@ -291,6 +314,33 @@ function createLimiter(max) {
 }
 
 /**
+ * Translate one unit, retrying under a hard split when the upstream ran out of
+ * context budget. A unit that still truncates after being cut in half keeps its
+ * source text, which is honest: the reader sees English rather than a half
+ * sentence in Chinese.
+ */
+async function translateUnitSplitting(settings, text, targetTag, limit, depth = 0) {
+  try {
+    return await limit(() => translateUnit(settings, text, targetTag))
+  } catch (error) {
+    const truncated = error instanceof TranslationTruncatedError
+    if (!truncated || depth >= 3) throw error
+    // Cut on a line boundary when possible, else on whitespace.
+    const half = Math.floor(text.length / 2)
+    const lineCut = text.lastIndexOf('\n', half)
+    const spaceCut = text.lastIndexOf(' ', half)
+    const cut = lineCut > 0 ? lineCut : spaceCut > 0 ? spaceCut : half
+    const head = text.slice(0, cut)
+    if (head.trim() === '' || cut >= text.length) throw error
+    const tail = text.slice(cut + 1)
+    const translatedHead = await translateUnitSplitting(settings, head, targetTag, limit, depth + 1)
+    if (tail.trim() === '') return translatedHead
+    const translatedTail = await translateUnitSplitting(settings, tail, targetTag, limit, depth + 1)
+    return `${translatedHead}\n${translatedTail}`
+  }
+}
+
+/**
  * Translate a full fragment, honouring locked code lines.
  * Returns the translated text shaped like the source.
  */
@@ -300,7 +350,7 @@ export async function translateFragment(settings, text, targetTag, limit) {
     units.map(async (unit) => {
       if (!unit.translate || !isTranslatable(unit.text)) return unit.text
       try {
-        return await limit(() => translateUnit(settings, unit.text, targetTag))
+        return await translateUnitSplitting(settings, unit.text, targetTag, limit)
       } catch {
         // One unit failing must not discard the whole fragment: keep the
         // source line so the reader still sees complete reasoning.
