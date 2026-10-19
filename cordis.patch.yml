@@ -2,3 +2,10 @@
     - id: pi-harness
       name: '@local/dsh-pi-harness'
       config: {}
+    # A local, offline translation endpoint for the built-in reasoning
+    # translation ("思考过程翻译"). It speaks Google's translate_a/single protocol
+    # and forwards to llama.cpp, so the profile only repoints
+    # `translator.googleEndpoint` at it; nothing in DSH is patched.
+    - id: local-translator
+      name: '@local/dsh-pi-harness/local-translator'
+      config: {}

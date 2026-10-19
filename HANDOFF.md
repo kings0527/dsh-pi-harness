@@ -42,6 +42,62 @@ except the optional core patch described in §4.
 longer load it. To relocate: `remove_bundle`, move the directory, `install_bundle`
 again.
 
+**Editing the clone does not update the profile.** The profile keeps its own copy
+under `~/.dsh/profiles/<name>/node_modules/.pnpm/...`, so after changing
+`package.json`, `cordis.patch.yml` or `local-translator/` in the clone you must
+reinstall:
+
+```bash
+cd ~/.dsh/profiles/<name> && pnpm install --force
+```
+
+`plugin_manager set_bundle` **rewrites `dsh.profile.bundles` from the caller's
+view**, which drops `@local/dsh-pi-harness` (it is a profile dependency, not an
+installation bundle). Re-enable it after any other bundle change, and confirm the
+row count with:
+
+```bash
+dsh --profile <name> --dump-config | grep -c "id: pi-harness"    # expect 1
+```
+
+Two `pi-harness` rows mean the plugin mounts twice — remove the duplicate
+`- insert:` block from the profile's `cordis.patch.yml`, which only needs to
+carry config overrides now that the bundle inserts its own rows.
+
+---
+
+## 1b. 思考过程翻译走本机模型（可选）
+
+DSH 自带的 CoT 翻译默认用 Bing/Google 匿名端点。本插件附带的 `local-translator`
+把这个端点换成本机 llama.cpp，thinking 不出本机。详见 README 的
+「思考过程翻译：跑本机模型」一节；要点：
+
+```yaml
+# profile 的 dsh.profile.bundles 需要包含官方 bundle
+"@deepseek-ai/dsh-experimental-cot-translation-bundle"
+
+# profile 的 cordis.patch.yml
+- id: translator
+  name: "@deepseek-ai/dsh-experimental-translator"
+  config:
+    provider: google
+    googleEndpoint: http://127.0.0.1:9912/translate_a/single
+- id: cot-translation
+  name: "@deepseek-ai/dsh-experimental-client-ui-cot-translation"
+  config:
+    provider: google
+    targetLanguage: auto
+```
+
+验证（不需要重启 DSH）：
+
+```bash
+curl -s 127.0.0.1:9912/health          # {"tag":"dsh-local-translator",...}
+cd ~/git/dsh-pi-harness && npm test    # 12/12, 含真实 DSH provider 兼容测试
+```
+
+GUI 侧的翻译工具栏需要刷新一次页面；Host 侧的 shim 随插件加载即起。
+
 ---
 
 ## 2. Point it at real projects

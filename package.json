@@ -1,11 +1,12 @@
 {
   "name": "@local/dsh-pi-harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Pi Harness compatibility layer for DeepSeek Harness: shared Board, tiered knowledge base, handoff takeover, and always-on doctrine.",
+  "description": "Pi Harness compatibility layer for DeepSeek Harness: shared Board, tiered knowledge base, handoff takeover, always-on doctrine, and a local (llama.cpp) reasoning-translation endpoint.",
   "exports": {
     ".": "./index.js",
+    "./local-translator": "./local-translator/index.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
@@ -13,11 +14,15 @@
     "index.js",
     "lib/*.js",
     "dist/*.js",
+    "local-translator/*.js",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
     "README.md"
   ],
+  "scripts": {
+    "test": "node --test local-translator/server.test.js"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

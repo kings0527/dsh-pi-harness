@@ -36,6 +36,7 @@ DSH (Win)  ─┘
 | Session handoff / directory takeover | `handoff` | `handoff/*.md` |
 | Always-on doctrine | system prompt section | — |
 | Per-turn reference (catalog + board + handoff) | `agent/pre-step` checkpoint/delta | — |
+| Offline reasoning translation (llama.cpp) | `local-translator` row | `127.0.0.1:9912` |
 
 ### `board`
 
@@ -75,6 +76,88 @@ status    what this directory carries: open topics, knowledge roots, latest hand
 list
 read      name?
 write     title, content?, slug?
+```
+
+## 思考过程翻译：跑本机模型（离线）
+
+DSH 自带「思考过程翻译」（`@deepseek-ai/dsh-experimental-cot-translation-bundle`），
+默认把展开的 thinking 发给 Bing / Google 的匿名端点。本插件额外提供一行
+`local-translator`：一个**本机 HTTP 端点**，讲 Google `translate_a/single` 协议，
+但把英文转发给本机 llama.cpp 推理——thinking 内容不出本机。
+
+上游 DSH 一行都不用改：`translator` 服务的两个匿名 provider 都是**可配 URL** 的，
+所以只要把 `google` 那条指向 `127.0.0.1:9912` 即可复用整套能力
+（会话内译文缓存、请求分段、GUI 工具栏、"查看原文/查看译文"）。
+
+```
+GUI 展开 thinking ──► cot-translation ──► translator(google) ──► 127.0.0.1:9912
+                                                                      │
+                                                             llama.cpp 127.0.0.1:9911
+```
+
+### 在 profile 里启用
+
+`.dsh/profiles/<name>/package.json` 的 `dsh.profile.bundles` 加上官方 bundle：
+
+```json
+"@deepseek-ai/dsh-experimental-cot-translation-bundle"
+```
+
+然后在该 profile 的 `cordis.patch.yml` 里把两条 row 指向本地端点：
+
+```yaml
+- id: translator
+  name: "@deepseek-ai/dsh-experimental-translator"
+  config:
+    provider: google
+    googleEndpoint: http://127.0.0.1:9912/translate_a/single
+    maxTextChars: 3000
+    timeoutMs: 60000
+- id: cot-translation
+  name: "@deepseek-ai/dsh-experimental-client-ui-cot-translation"
+  config:
+    provider: google
+    targetLanguage: auto      # auto 跟随界面语言；也可写 zh-CN
+```
+
+> 不要在本 bundle 自己的 `cordis.patch.yml` 之外再 `insert` 一次 `pi-harness`：
+> 那个文件已经插好了 `pi-harness` 和 `local-translator` 两行，重复 insert 会挂载两份。
+
+### 模型与开关
+
+`local-translator` 的默认值与该机器上的 pi-translate 完全一致，两个 harness
+共用一个 GGUF 和同一个 llama.cpp 二进制：
+
+| 配置 | 默认 | 含义 |
+|---|---|---|
+| `port` | `9912` | shim 监听端口 |
+| `upstream` | `http://127.0.0.1:9911` | llama.cpp 地址（pi-translate 也用这个） |
+| `upstreamModel` | `qwen3-translate` | llama-server 的 `--alias` |
+| `modelPath` | `~/hy-mt2-1.8b-q4km.gguf` | 自动拉起时加载的 GGUF |
+| `llamaServerPath` | `~/llama.cpp/llama-b10796/llama-server` | 自动拉起用的二进制 |
+| `autoStart` | `true` | 上游没起来时自动 spawn |
+| `maxChars` | `3000` | 单个翻译单元上限（按行切） |
+| `maxConcurrent` | `4` | 并发上限，防止长 thinking 打爆模型 |
+
+行为要点：
+
+- **围栏代码块整块保护**：``` / ~~~ 内的行原样保留，不翻译、不替换。
+- **单行失败不毁整段**：某个翻译单元失败就保留该行原文，整段照样返回。
+- **端口已被占用就复用**：多个 DSH 实例共享同一个 shim（`/health` 里有
+  `tag: dsh-local-translator` 作为身份标记）。
+- **失败软着陆**：shim 起不来不会拖垮 Host，GUI 侧只会看到普通的翻译失败。
+
+改完 profile 后需要重启 DSH（`dsh web`）让 Host 重新挂载；页面刷新一次即可让
+GUI 侧拿到翻译工具栏。
+
+在 profile 里也可以直接覆盖这一行的配置，例如换一个更大的模型：
+
+```yaml
+- id: local-translator
+  name: "@local/dsh-pi-harness/local-translator"
+  config:
+    modelPath: /Users/me/qwen3-1.7b-q4km.gguf
+    port: 9912
 ```
 
 ## Install
