@@ -1,4 +1,4 @@
-// core/runtime/root.ts
+// ../pi-harness/core/runtime/root.ts
 import { AsyncLocalStorage } from "node:async_hooks";
 var scope = new AsyncLocalStorage;
 function scopedProjectRoot() {
@@ -7,7 +7,7 @@ function scopedProjectRoot() {
 function runWithProjectRoot(root, operation) {
   return scope.run(root, operation);
 }
-// core/board/index.ts
+// ../pi-harness/core/board/index.ts
 import {
   appendFileSync as appendFileSync2,
   closeSync,
@@ -24,7 +24,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { join as join4 } from "node:path";
 
-// core/storage/index.ts
+// ../pi-harness/core/storage/index.ts
 import { mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 var storageRoot = null;
@@ -51,7 +51,7 @@ function ensureDir(dir) {
   }
 }
 
-// core/events/index.ts
+// ../pi-harness/core/events/index.ts
 import { appendFileSync, mkdirSync as mkdirSync2 } from "node:fs";
 import { dirname, join as join2 } from "node:path";
 function appendEvent(type, details, root) {
@@ -67,7 +67,7 @@ function appendEvent(type, details, root) {
 `, "utf-8");
 }
 
-// core/board/integrity.ts
+// ../pi-harness/core/board/integrity.ts
 import { existsSync as existsSync2, readFileSync } from "node:fs";
 import { join as join3 } from "node:path";
 function assertTopicId(topicId) {
@@ -244,7 +244,7 @@ function assertArchivedTopicIntact(topicId) {
   return report;
 }
 
-// core/board/index.ts
+// ../pi-harness/core/board/index.ts
 function topicsDir() {
   return join4(getStorageRoot(), "topics");
 }
@@ -992,11 +992,11 @@ function recoverAllCloseTransactions() {
   const dir = join4(topicsDir(), ".transactions");
   if (!existsSync3(dir))
     return;
-  for (const file of readdirSync(dir).filter((file) => file.endsWith(".close.json")))
+  for (const file of readdirSync(dir).filter((file2) => file2.endsWith(".close.json")))
     recoverCloseTransaction(file.slice(0, -".close.json".length));
 }
 function recoverOpenTransactions() {
-  for (const file of readdirSync(topicsDir()).filter((file) => file.endsWith(".jsonl"))) {
+  for (const file of readdirSync(topicsDir()).filter((file2) => file2.endsWith(".jsonl"))) {
     const topicId = file.slice(0, -".jsonl".length);
     const boardPath = topicBoardMdPath(topicId);
     if (existsSync3(boardPath))
@@ -1082,7 +1082,7 @@ function generateDecisions(topic, notes) {
 ## Key Findings & Decisions
 
 `;
-  for (const n of notes.filter((n) => n.priority === "critical"))
+  for (const n of notes.filter((n2) => n2.priority === "critical"))
     md += `### Decision from ${n.author} (seq #${n.seq})
 
 ${n.content}
@@ -1101,7 +1101,7 @@ ${last.content}
 *Generated at topic close. Use \`distill\` to elevate conclusions to knowledge.*
 `;
 }
-// core/knowledge/index.ts
+// ../pi-harness/core/knowledge/index.ts
 import {
   existsSync as existsSync4,
   lstatSync,
@@ -1119,9 +1119,9 @@ var RETIRED_STATUS_BY_TAG = {
   DEPRECATED: "deprecated"
 };
 var STATUS_TAG_PATTERN = /^\[(SUPERSEDED|ARCHIVED|DEPRECATED)\]\s*/i;
-function assertScope(scope) {
-  if (scope !== "project" && scope !== "workspace" && scope !== "global") {
-    throw new Error(`Invalid knowledge scope "${String(scope)}"`);
+function assertScope(scope2) {
+  if (scope2 !== "project" && scope2 !== "workspace" && scope2 !== "global") {
+    throw new Error(`Invalid knowledge scope "${String(scope2)}"`);
   }
 }
 function getProjectRoot(startDir = process.cwd()) {
@@ -1139,16 +1139,16 @@ function getWorkspaceRoot(startDir = process.cwd()) {
     current = parent;
   }
 }
-function getKnowledgeRoot(scope = "project") {
-  assertScope(scope);
-  if (scope === "global")
+function getKnowledgeRoot(scope2 = "project") {
+  assertScope(scope2);
+  if (scope2 === "global")
     return join5(homedir(), ".pi-harness", "knowledge");
-  if (scope === "workspace")
+  if (scope2 === "workspace")
     return join5(getWorkspaceRoot(), "knowledge");
   return join5(getProjectRoot(), "knowledge");
 }
-function getIndexPath(scope) {
-  return join5(getKnowledgeRoot(scope), "index.md");
+function getIndexPath(scope2) {
+  return join5(getKnowledgeRoot(scope2), "index.md");
 }
 function isSymlink(path) {
   try {
@@ -1172,7 +1172,7 @@ function assertNoSymlinkComponents(root, fullPath) {
     }
   }
 }
-function resolveEntryPath(entryPath, scope) {
+function resolveEntryPath(entryPath, scope2) {
   if (typeof entryPath !== "string" || entryPath.trim() === "") {
     throw new Error("Knowledge entry path is required");
   }
@@ -1182,12 +1182,12 @@ function resolveEntryPath(entryPath, scope) {
   if (isAbsolute(entryPath)) {
     throw new Error(`Knowledge entry path must be relative: "${entryPath}"`);
   }
-  const root = getKnowledgeRoot(scope);
+  const root = getKnowledgeRoot(scope2);
   const fullPath = resolve(root, entryPath);
   const rel = relative(root, fullPath);
   const outsideRoot = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
   if (!rel || outsideRoot) {
-    throw new Error(`Knowledge entry path escapes the ${scope} root: "${entryPath}"`);
+    throw new Error(`Knowledge entry path escapes the ${scope2} root: "${entryPath}"`);
   }
   if (rel === "index.md") {
     throw new Error('"index.md" is reserved for the knowledge index');
@@ -1215,9 +1215,9 @@ function recordKnowledgeEvent(details) {
     appendEvent("distill", details);
   } catch {}
 }
-function getIndex(scope = "project") {
-  const indexPath = getIndexPath(scope);
-  assertNoSymlinkComponents(getKnowledgeRoot(scope), indexPath);
+function getIndex(scope2 = "project") {
+  const indexPath = getIndexPath(scope2);
+  assertNoSymlinkComponents(getKnowledgeRoot(scope2), indexPath);
   if (!existsSync4(indexPath))
     return [];
   const content = readFileSync3(indexPath, "utf-8");
@@ -1240,32 +1240,32 @@ function getIndex(scope = "project") {
   }
   return entries;
 }
-function auditIndex(scope = "project") {
-  return getIndex(scope).flatMap((entry) => {
+function auditIndex(scope2 = "project") {
+  return getIndex(scope2).flatMap((entry) => {
     try {
-      const fullPath = resolveEntryPath(entry.path, scope);
+      const fullPath = resolveEntryPath(entry.path, scope2);
       return existsSync4(fullPath) ? [] : [{ path: entry.path, reason: "missing" }];
     } catch (error) {
       return [{ path: entry.path, reason: "invalid", detail: error?.message }];
     }
   });
 }
-function getEntry(entryPath, scope = "project") {
-  const fullPath = resolveEntryPath(entryPath, scope);
+function getEntry(entryPath, scope2 = "project") {
+  const fullPath = resolveEntryPath(entryPath, scope2);
   if (!existsSync4(fullPath))
     return null;
   return readFileSync3(fullPath, "utf-8");
 }
-function addEntry(entryPath, content, sourceLink, description, scope = "project") {
+function addEntry(entryPath, content, sourceLink, description, scope2 = "project") {
   assertSingleLine(sourceLink, "Source link");
   assertSingleLine(description, "Description");
-  const fullPath = resolveEntryPath(entryPath, scope);
+  const fullPath = resolveEntryPath(entryPath, scope2);
   if (existsSync4(fullPath)) {
     throw new Error(`Entry "${entryPath}" already exists. Use markConflict() if the new finding contradicts it, or choose a different path.`);
   }
   const dir = dirname2(fullPath);
   mkdirSync3(dir, { recursive: true });
-  assertNoSymlinkComponents(getKnowledgeRoot(scope), fullPath);
+  assertNoSymlinkComponents(getKnowledgeRoot(scope2), fullPath);
   const entryContent = `${content.trim()}
 
 ---
@@ -1274,7 +1274,7 @@ function addEntry(entryPath, content, sourceLink, description, scope = "project"
 `;
   writeFileSync2(fullPath, entryContent, { encoding: "utf-8", flag: "wx" });
   try {
-    updateIndex(entryPath, description, scope);
+    updateIndex(entryPath, description, scope2);
   } catch (error) {
     if (existsSync4(fullPath))
       unlinkSync2(fullPath);
@@ -1284,15 +1284,15 @@ function addEntry(entryPath, content, sourceLink, description, scope = "project"
     action: "add_entry",
     path: entryPath,
     source: sourceLink,
-    scope
+    scope: scope2
   });
 }
-function markConflict(existingPath, newSourceLink, conflictDescription, scope = "project") {
+function markConflict(existingPath, newSourceLink, conflictDescription, scope2 = "project") {
   assertSingleLine(newSourceLink, "Source link");
   if (!conflictDescription || conflictDescription.trim() === "") {
     throw new Error("Conflict description is required");
   }
-  const fullPath = resolveEntryPath(existingPath, scope);
+  const fullPath = resolveEntryPath(existingPath, scope2);
   if (!existsSync4(fullPath)) {
     throw new Error(`Entry "${existingPath}" not found — cannot mark conflict`);
   }
@@ -1312,12 +1312,12 @@ function markConflict(existingPath, newSourceLink, conflictDescription, scope = 
     action: "mark_conflict",
     path: existingPath,
     newSource: newSourceLink,
-    scope
+    scope: scope2
   });
 }
-function updateIndex(entryPath, description, scope) {
-  const indexPath = getIndexPath(scope);
-  const root = getKnowledgeRoot(scope);
+function updateIndex(entryPath, description, scope2) {
+  const indexPath = getIndexPath(scope2);
+  const root = getKnowledgeRoot(scope2);
   assertNoSymlinkComponents(root, indexPath);
   mkdirSync3(root, { recursive: true });
   assertNoSymlinkComponents(root, indexPath);
@@ -1344,27 +1344,27 @@ function updateIndex(entryPath, description, scope) {
   atomicWrite(indexPath, nextContent);
 }
 export {
-  addEntry,
-  appendEvent,
-  assessCloseReadiness,
-  auditIndex,
-  closeTopic,
-  getEntry,
-  getIndex,
-  getKnowledgeRoot,
-  getProjectRoot,
-  getTopicCatalogEntry,
-  getWorkspaceRoot,
-  hasArchivedTopic,
-  listOpenTopicCatalog,
-  listOpenTopics,
-  listTopicCatalog,
-  listTopics,
-  markConflict,
-  openTopic,
-  postNote,
-  readArchivedTopic,
-  readNotes,
+  scopedProjectRoot,
   runWithProjectRoot,
-  scopedProjectRoot
+  readNotes,
+  readArchivedTopic,
+  postNote,
+  openTopic,
+  markConflict,
+  listTopics,
+  listTopicCatalog,
+  listOpenTopics,
+  listOpenTopicCatalog,
+  hasArchivedTopic,
+  getWorkspaceRoot,
+  getTopicCatalogEntry,
+  getProjectRoot,
+  getKnowledgeRoot,
+  getIndex,
+  getEntry,
+  closeTopic,
+  auditIndex,
+  assessCloseReadiness,
+  appendEvent,
+  addEntry
 };
