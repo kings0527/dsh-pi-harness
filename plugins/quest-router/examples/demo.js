@@ -18,10 +18,14 @@ const config = {
 }
 const quest = new Quest(root, config, async request => {
   console.log(`attempt ${request.number}: ${request.plan.routeId} / ${request.plan.method}`)
+  const experiment = {
+    hypothesis: 'A missing witness blocks the next step', discriminatingTest: `Run the independent witness verifier using ${request.plan.method}`,
+    expectedObservation: 'A reproducible witness with value 42',
+  }
+  request.commitExperiment(experiment)
   if (request.plan.routeId === 'alternative') writeFileSync(join(root, 'exit-witness.json'), JSON.stringify({ value: 42, reproduced: true }))
   return { stopReason: 'completed', structured: {
-    hypothesis: 'A missing witness blocks the next step', discriminatingTest: 'Run the independent witness verifier',
-    expectedObservation: 'A reproducible witness with value 42', conclusion: 'The exit witness satisfies the configured check.',
+    ...experiment, conclusion: 'The exit witness satisfies the configured check.',
     limitations: ['This is a simulated routing demonstration, not evidence about real model rankings.'],
   } }
 })

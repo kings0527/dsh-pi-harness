@@ -3,12 +3,24 @@ import assert from 'node:assert/strict'
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Quest } from '../core/quest.js'
+import { Quest as Engine } from '../core/quest.js'
 import { hash, projectPath, Store } from '../core/store.js'
 import { configuration, nextPlan } from '../core/policy.js'
 
 const owner = 'main-session'
 const report = { hypothesis: 'A missing precondition blocks the exit', discriminatingTest: 'Observe the exit witness', expectedObservation: 'A reproducible exit witness', conclusion: 'Candidate result', limitations: ['Only the configured exit condition was checked.'] }
+
+// Simulated solvers obey the same pre-tool proposal protocol as real DSH workers.
+class Quest extends Engine {
+  constructor(root, config, runner) {
+    super(root, config, runner && (async req => {
+      const proposal = { hypothesis: report.hypothesis, discriminatingTest: `${report.discriminatingTest}: ${req.plan.method}`, expectedObservation: report.expectedObservation }
+      req.commitExperiment(proposal)
+      const result = await runner(req)
+      return { ...result, ...(result.structured ? { structured: { ...result.structured, ...proposal } } : {}) }
+    }))
+  }
+}
 
 export function fixture(t, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), 'quest-router-'))
@@ -193,7 +205,8 @@ test('changing verifier configuration cannot reuse the old contract', async t =>
   const f = fixture(t), q = new Quest(f.root, f.config, async () => assert.fail())
   f.create(q)
   q.config.checks.exit.args.push('changed-mode')
-  await assert.rejects(q.run('step-eight', owner), /Verifier configuration changed/)
+  const result = await q.run('step-eight', owner)
+  assert.equal(result.status, 'error'); assert.match(result.reason, /Verifier configuration changed/)
 })
 
 test('an accepted verdict with no evidence cannot enter the mainline', async t => {

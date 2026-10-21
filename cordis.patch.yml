@@ -9,3 +9,6 @@
     - id: local-translator
       name: '@local/dsh-pi-harness/local-translator'
       config: {}
+    - id: quest-router
+      name: '@local/dsh-pi-harness/quest-router'
+      config: {}

@@ -1,6 +1,6 @@
-# DSH Quest Router 0.1
+# DSH Quest Router 0.2
 
-一个以可验证证据控制多模型尝试、隔离主线与副本上下文的独立 DSH 插件。可与 `dsh-pi-harness` 并用，不修改 DSH 执行循环，不需要第三方 Node 依赖。
+一个以可验证证据控制多模型尝试、隔离主线与副本上下文的 DSH 插件。可与 `dsh-pi-harness` 并用，不修改 DSH 执行循环，不需要第三方 Node 依赖。
 
 状态：**可测试原型**。内核、真实本地验收子进程、DSH 接口替身测试已经覆盖；未连接用户的 DSH 实例和模型账号进行端到端验证。不提供 MoE 专家选择、语义穷举保证或沙箱。
 
@@ -8,23 +8,26 @@
 
 - 主模型提出副本的目标、入口事实、出口条件和预先配置的验收器。
 - 插件创建 fresh `spawn` 子会话，固定一种实验方法，按模型配置运行。
-- 子模型提交可证伪假设、区分性实验、预测观察、结论和局限。
+- worker 先用只读 `quest_context` 查看任务，再调用 `quest_experiment` 登记可证伪假设、区分性实验和预测观察。登记成功前禁止工作区工具；最终报告必须保留登记的三项内容，再补结论和局限。worker 使用独立的 native 工具界面，避免 PTC 的 `run_code` 入口与登记门禁互相阻塞。
 - 插件运行固定的外部验收器。只有它返回的、有文件证据的结构化观察才记为进展；模型自评、日志字节变化、耗时和工具等待都不算。
 - 同一证据版本下，不同方法连续没有新观察，就换下一条可配置模型路线。模型自称失败不会直接购买更贵的路线。
 - 验收通过后，只返回简短结论及证书引用。原始尝试、精确 capsule、验收日志保留在 `.quest-router/`；完整工具轨迹仍由 DSH 子会话保存，账本记录 `childId`。
 - 逻辑副本可以有 parent 和依赖关系，但实验 worker 不继续递归委派，避免多层摘要传话。所有副本由同一协调器管理。
 - 上游证书被撤销、证据文件变化或依赖版本变化，下游证书不再有效。
-- 绑定 `blocksMainline: true` 的副本耗尽或执行失败，通过 DSH `goals.block()` 阻止 goal 自动续跑。其他副本失败不阻断无关主线。
+- `blocksMainline: true` 保存具体 goal 身份与目标指纹。耗尽或执行失败只阻塞匹配的当前 goal 修订；替换目标不会被旧副本阻塞；旧结果只归档，返回 detached 卡片，不向新主线提交旧证书。取消后的副本可继续运行，预算不清零。
+- 配置 `autoQuest` 后，重复工具观察或匹配的 goal 自动续轮可以由 runtime 直接创建并运行副本，无需主模型决定求助。
 
 ## 安装
 
-把本目录放到稳定路径，通过 DSH 的 Plugin Manager 安装本目录：
+从本仓库 **0.3.0** 起，安装根 bundle 已包含并挂载 quest-router，无需再安装第二份。已有安装按原渠道更新后，在 profile 中配置 `id: quest-router`。默认没有模型路线与验收器，未配置时不会自动购买模型调用。
+
+需要独立安装时，把本目录放到稳定路径，通过 DSH 的 Plugin Manager 安装本目录：
 
 ```text
 plugin_manager install_bundle target="/absolute/path/to/quest-router"
 ```
 
-Windows 使用实际的 Windows 绝对路径。与原 `dsh-pi-harness` 是两个 bundle，不要重复挂载。
+独立 bundle 与根 bundle 二选一。若原来单独安装过旧插件，升级根 bundle 前移除重复的 quest-router row。Windows 使用实际绝对路径；当前进程树终止回归只在 Linux 执行，Windows 的 taskkill 路径尚未实测。
 
 需要 DSH 的 `subagents`、fresh `spawn` backend、`tools`、`workingDirectory`、`llm`、`systemPrompt` 服务；若需要阻止 goal 续跑，还需要 `goals`。实现参照上游源码 `687f282e8625c6b8d11ff58211a90524be2e4317`（检查日期 2026-10-21），不是对所有旧版本的兼容承诺。缺少所需 API 会明确报错。
 
@@ -58,6 +61,14 @@ Windows 使用实际的 Windows 绝对路径。与原 `dsh-pi-harness` 是两个
         reasoningEffort: max
         tier: 1
         cost: 4
+    autoQuest:
+      check: exit
+      onRepeat: true
+      onGoalRound: true
+      objective: "只解决当前阻塞步骤，产出独立复现结果"
+      entry: "这里写步骤 8 的入口、版本条件和已确认线索"
+      exit: "verify.mjs 独立复现从 8 到 9"
+      inputs: [reproduction-input.json, failure-trace.txt]
     checks:
       exit:
         command: /absolute/path/to/node
@@ -67,6 +78,12 @@ Windows 使用实际的 Windows 绝对路径。与原 `dsh-pi-harness` 是两个
 ```
 
 这里的 `cost` 是同层路线的配置排序权重，**没有接入真实价格或计费**；`tier` 表示你的路由优先级，不代表通用智力排行。`stagnantAttempts` 是已声明方法、固定证据版本、没有可验证新观察的局部预算，不是“每 N 轮强制切模型”。当前策略是可解释启发式，没有宣称已校准成功概率。
+
+**默认不会自动选择 GLM。** 路线来自你明确配置的 `routes`；上例是 Flash → GLM 的配置模板，provider 和 effort 必须以本机清单为准。`quest action=status` 会显示实际可用路线、check 名称、自动入口与损坏日志诊断，便于确认生效。
+
+`autoQuest` 默认关闭。启用后，`onRepeat` 在同一目标下连续出现 `repeatToolResults` 次相同工具输入/输出（含相同错误，排除显式 wait/poll）时触发；`onGoalRound` 在匹配当前 goal id/revision 的自动续轮触发。两者都只调度这里声明的固定阻塞任务，先跑验收 baseline，出口已满足就不调用模型。最近一次工具观察会作为未验证的文件引用进入入口，不作为已验证事实。
+
+自动 case 按 session、goal 身份、目标指纹和模板去重；失败不会靠下一轮自动创建新 ID 重置预算。同一阻塞点验收通过后，主线只得到证书卡片。要处理下一个不同阻塞点，修改模板或显式创建新 case。runtime 不推测任意对话的语义卡点，也不自动把整个 goal 标记完成。
 
 所有实际引用的验收代码和依赖文件都应列入 `pins`。运行前后都会检查 pin。pin 和 hash 用于发现变化，不能抵御拥有同一文件系统写权限的恶意 worker。不要把验收器当成隔离环境。
 
@@ -87,6 +104,8 @@ quest action=status id="step-eight"
 ```
 
 `run` 由外部调度器执行这一副本的多个尝试，直到验收通过、路由政策耗尽、预算耗尽或执行失败。主线不需要逐次接收原文。原始输入会复制到有 SHA256 的文件引用；过大的 capsule 会返回完整文件的读取指针，不静默截断。
+
+取消后，再次 `quest action=run` 会重做 baseline 并继续，历史尝试与 session 预算保留。`error / blocked / stale` 仍需检查原因后显式 invalidate；改变验收器配置需要新 case。旧版本未绑定 goal 的关键副本必须显式 `quest action=bind id="step-eight"`，不会自动绑定后来出现的新目标。
 
 子副本与依赖：
 
@@ -120,6 +139,8 @@ quest action=invalidate id="eight-environment" reason="新的复现实验证明�
 }
 ```
 
+验收完成、取消或超时后会清理进程组；超时强杀等待期由 `killGraceMs` 控制，父进程先退出不会取消后代的强杀。日志使用固定大小缓冲区复制并计算 hash，stdout 大小检查先于 JSON 解析。
+
 `key` 必须表示一个明确、可复验、带条件的观察；value 是字符串、数值或布尔值。进展以新 `key/value` 计，不以日志 hash 计。`accepted:true` 至少需要一个带文件证据的观察。程序必须以 0 退出；假设被证伪使用 `accepted:false`，程序启动失败、非零退出、超时、非法 JSON、pin 变化是执行故障，会停止调度，不会被解释为模型能力不足。
 
 验收器决定“出口是否通过”，不保证 summary 中每一句解释都正确，也不证明审计完整或不存在漏洞。没有可执行的出口条件时，先把目标收窄为可验证的中间产物；只靠另一个模型同意，不能获得同等级的验收证据。
@@ -136,18 +157,27 @@ quest action=invalidate id="eight-environment" reason="新的复现实验证明�
 | `maxCheckBytes` | 65536 | stdout JSON 的解析上限；完整日志保留 |
 | `maxConclusionBytes` | 2400 | 子报告的 UTF-8 字节上限，超出报告不准入 |
 | `maxCapsuleBytes` | 16384 | 超出后改为完整 capsule 文件引用 |
-| `repeatToolResults` | 3 | 同输入/同输出工具调用的提示阈值；不触发模型切换 |
-| `blockGoalOnExhaustion` | true | 允许绑定主线的副本调用 `goals.block()` |
+| `repeatToolResults` | 3 | 相同工具观察阈值；配置 autoQuest 后可自动进入副本，无配置时仅提示 |
+| `blockGoalOnExhaustion` | true | 只阻塞匹配目标与运行起始修订的 goal；取消不阻塞 |
+| `killGraceMs` | 1000 | 进程组 TERM 后等待强杀的时间 |
+| `autoQuest` | null | 指定自动副本模板；至少包含 check，并配置 routes |
+| `strategies` | {} | 任务专用方法指令，以方法 id 为键；通过 methods 选择 |
 | `workerPreset` | 无 | 可选的、已在 DSH 注册的 worker preset |
 
 ## 测试和检查
 
+测试命令在源码目录执行；安装包中的 CLI 可直接用于状态与证据检查。
+
 ```bash
 npm test
 npm run demo
-node cli.js status /path/to/project
+node cli.js status /path/to/project --config /path/to/router-config.json
 node cli.js inspect /path/to/project step-eight
 ```
+
+CLI 的 `--config` 接受与插件 row.config 相同内容的 JSON。没有当前配置时，完整证书显示 `unverified`，不会假称已验证当前验收条件；引用损坏、证据变化则显示 `stale`。损坏 case 单独报告，其他 case 可以继续。预算在派发前持久化预留；旧损坏日志按每 case 上限保守计入预算，未知 owner 对所有 session 保守计费。它不会通过跳过损坏日志获得额外预算。
+
+可通过 `strategies: {call-graph: "从调用图约束设计区分性实验"}` 与 `methods: [call-graph, falsify]` 加入领域策略。实验指纹同时记录实际假设/测试/预测，去除首尾空白后的同一实验，在同 route、同证据版本内会被拒绝；跨模型可复验。它仍不保证自动识别语义等价的不同措辞。
 
 demo 使用模拟模型、真实的本地验收子进程，会展示两种 cheap 方法无进展后切到另一条路线、验收通过并产生证书。它不是 DeepSeek / GLM 的能力对比结果。
 
@@ -156,7 +186,7 @@ demo 使用模拟模型、真实的本地验收子进程，会展示两种 cheap
 1. **上下文隔离，工作目录共享。** 插件内同项目实验串行；不提供 git worktree、容器、文件权限隔离、IDA/调试器快照，也不自动把 patch 合并回主线。其他进程仍可能修改同一个项目。
 2. **worker 是受信协作者。** 工具门禁阻止其使用 Board/knowledge/handoff、quest 和常见委派工具；它仍能通过通用文件/命令工具访问文件。自定义别名工具不在该门禁的完整识别范围内。应通过 `workerPreset` 配置所需工具范围。
 3. **语义重复无法由 hash 完全识别。** route / method / 证据版本 / contract 决定尝试指纹；报告带假设和区分性实验供下次参考。换了措辞但同一个错误假设，仍可能被当成新尝试。没有声称实现自动语义穷举。
-4. **默认方法是起点。** v0.1 内置 forward / backward / minimize / falsify，可选择顺序；新增领域方法需要扩展 `METHODS` 并验证效果。它们不等价于神经专家。
+4. **默认方法是起点。** 内置 forward / backward / minimize / falsify，可选择顺序；新增领域方法使用 `strategies` 配置并验证效果。它们不等价于神经专家。
 5. **崩溃不自动重跑。** 未知 child 状态、遗留 `runner.lock` 或损坏日志须先检查。没有自动强拆锁、接管其他 session 或恢复未知副作用的命令。
 6. **新 worker 不继承对话，不等于没有系统注入。** 适配器滤掉本桥接插件的 `pi-harness` 被动 reference，阻止相关共享工具；其他 DSH 插件和项目说明仍由 preset 决定。
 7. **准确性边界在验收器。** 固定错的验收器只会稳定地产生错结论；需要独立复现、阴性对照和任务针对性的验证设计。

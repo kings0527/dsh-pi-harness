@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-quest-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Evidence-gated, context-isolated experiments and model routing for DeepSeek Harness",

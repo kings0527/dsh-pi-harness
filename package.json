@@ -1,12 +1,14 @@
 {
   "name": "@local/dsh-pi-harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22.19.0" },
   "description": "Pi Harness compatibility layer for DeepSeek Harness: shared Board, tiered knowledge base, handoff takeover, always-on doctrine, and a local (llama.cpp) reasoning-translation endpoint.",
   "exports": {
     ".": "./index.js",
     "./local-translator": "./local-translator/index.js",
+    "./quest-router": "./plugins/quest-router/index.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
@@ -18,10 +20,12 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "plugins/quest-router"
   ],
   "scripts": {
-    "test": "node --test local-translator/server.test.js"
+    "test": "node --test local-translator/server.test.js plugins/quest-router/tests/*.test.js",
+    "test:quest": "node --test plugins/quest-router/tests/*.test.js"
   },
   "dsh": {
     "bundle": {

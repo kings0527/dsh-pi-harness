@@ -311,9 +311,11 @@ third-party licences (MIT, plus one CC BY-SA 4.0 directory) and are kept outside
 the plugin. `HANDOFF.md` describes how a personal setup installs them and which
 licence applies to which directory.
 
-## 隔离实验与多模型路由（可选原型）
+## 隔离实验与多模型路由
 
-[`plugins/quest-router`](plugins/quest-router/README.md) 是独立安装的 DSH bundle：把阻塞步骤作为单独副本，用固定验收器记录进展并调度不同方法/模型，只向主线返回结论证书。逻辑依赖支持失效回溯，绑定主线的耗尽副本可阻止 goal 自动续跑。它隔离会话上下文，当前使用共享工作目录串行执行，尚未在真实 DSH/模型账号上做端到端验证。
+从 0.3.0 起，根 bundle 包含 [`quest-router`](plugins/quest-router/README.md)：把阻塞步骤作为副本，用固定验收器记录进展并调度不同方法/模型，只向主线返回结论证书。配置 `routes`、`checks`、`autoQuest.check` 后，重复工具观察或 goal 自动续轮可以直接进入副本。worker 先登记实验，再使用工作区工具；目标绑定与取消恢复保留预算。默认未配置路线和验收器，不会自动调用升级模型。
+
+根目录 `npm test` 已包含插件回归测试。根 bundle 和独立 quest-router bundle 二选一，避免重复挂载。当前共享工作目录串行执行，真实 DSH/模型账号端到端验证仍需在使用环境完成。
 
 ## License
 

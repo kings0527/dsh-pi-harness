@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
-import { METHODS, configuration, nextPlan } from './policy.js'
+import { mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { configuration, nextPlan } from './policy.js'
 import { Store, hash, idOf, projectPath } from './store.js'
 import { runCheck } from './check.js'
+import { validCertificate } from './certificate.js'
 
 function nonempty(value, name) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} is required`)
@@ -12,6 +13,11 @@ export const REPORT_SCHEMA = {
   type: 'object', properties: { hypothesis: { type: 'string' }, discriminatingTest: { type: 'string' }, expectedObservation: { type: 'string' }, conclusion: { type: 'string' }, limitations: { type: 'array', items: { type: 'string' } } },
   required: ['hypothesis', 'discriminatingTest', 'expectedObservation', 'conclusion', 'limitations'], additionalProperties: false,
 }
+
+export const EXPERIMENT_SCHEMA = { type: 'object', properties: Object.fromEntries(['hypothesis', 'discriminatingTest', 'expectedObservation'].map(key => [key, { type: 'string' }])), required: ['hypothesis', 'discriminatingTest', 'expectedObservation'], additionalProperties: false }
+export const experimentOf = value => Object.fromEntries(EXPERIMENT_SCHEMA.required.map(key => [key, nonempty(value?.[key], key)]))
+// Preserve case and internal whitespace: payload bytes and case-sensitive paths can distinguish security experiments.
+const experimentKey = value => hash(JSON.stringify(Object.values(experimentOf(value)).map(text => text.trim())))
 
 export class Quest {
   constructor(root, config, runner) {
@@ -35,40 +41,19 @@ export class Quest {
     }
     if (!Array.isArray(contract.assumptions) || contract.assumptions.some(x => typeof x !== 'string')) throw new Error('assumptions must be strings')
     if (!Array.isArray(contract.dependsOn) || new Set(contract.dependsOn).size !== contract.dependsOn.length) throw new Error('dependsOn must be distinct quest ids')
-    if (!this.config.checks[contract.check]) throw new Error(`Configure a pinned verifier named ${contract.check} first`)
+    if (!Object.hasOwn(this.config.checks, contract.check)) throw new Error(`Configure a pinned verifier named ${contract.check} first`)
     contract.verifierHash = hash(JSON.stringify(this.config.checks[contract.check]))
     for (const id of contract.dependsOn) this.store.read(idOf(id))
     if (args.parent) this.own(args.parent, owner)
     return this.store.write(args.id, 'created', before => {
       if (before) throw new Error(`Quest ${args.id} already exists`)
-      return { id: args.id, owner, parent: args.parent ?? null, blocksMainline: args.blocksMainline === true, contract, contractHash: hash(JSON.stringify(contract)), epoch: 1, status: 'open', facts: [], attempts: [], baseline: null, certificate: null, reason: null, lease: null }
+      return { id: args.id, owner, parent: args.parent ?? null, blocksMainline: args.blocksMainline === true, goalRef: args.goalRef ?? null, contract, contractHash: hash(JSON.stringify(contract)), epoch: 1, status: 'open', facts: [], attempts: [], baseline: null, certificate: null, reason: null, lease: null }
     }, 0)
   }
 
   /** Compare dependencies recursively, so a partial cascade cannot make a stale certificate valid. */
   valid(id, seen = new Set()) {
-    if (seen.has(id)) throw new Error('Dependency cycle')
-    const state = this.store.read(id).state
-    if (state.status !== 'accepted' || !state.certificate) return false
-    if (!this.config.checks[state.contract.check] || state.contract.verifierHash !== hash(JSON.stringify(this.config.checks[state.contract.check]))) return false
-    const refs = [state.certificate.ref, state.certificate.verification, ...state.certificate.evidence.flatMap(f => f.evidence)]
-    for (const ref of refs) {
-      const file = projectPath(this.store.root, ref.path)
-      if (!existsSync(file) || hash(readFileSync(file)) !== ref.sha256) return false
-      if (ref.originalPath) {
-        const current = projectPath(this.store.root, ref.originalPath)
-        if (!existsSync(current) || hash(readFileSync(current)) !== ref.sha256) return false
-      }
-    }
-    for (const [name, expected] of Object.entries(state.certificate.verifierPins)) {
-      const file = projectPath(this.store.root, name)
-      if (!existsSync(file) || hash(readFileSync(file)) !== expected) return false
-    }
-    const next = new Set(seen).add(id)
-    return Object.entries(state.certificate.dependencies).every(([dep, digest]) => {
-      const upstream = this.store.read(dep).state
-      return upstream.certificate?.digest === digest && this.valid(dep, next)
-    })
+    return validCertificate(this.store, id, this.config.checks, seen)
   }
 
   dependencies(state) {
@@ -118,7 +103,7 @@ export class Quest {
     const state = this.store.read(id).state
     const valid = state.status === 'accepted' && this.valid(id)
     return { id, status: state.status === 'accepted' && !valid ? 'stale' : state.status, attempts: state.attempts.length,
-      reason: state.reason, journal: `.quest-router/cases/${id}/events.jsonl`,
+      reason: state.reason, goalRef: state.goalRef ?? null, journal: `.quest-router/cases/${id}/events.jsonl`,
       ...(valid ? { verifiedBy: state.contract.check, conclusion: state.certificate.conclusion, limitations: state.certificate.limitations, certificate: state.certificate.ref } : {}) }
   }
 
@@ -127,14 +112,14 @@ export class Quest {
       instruction: 'Solve only this experiment. Choose a falsifiable hypothesis and a discriminating test with a predicted observation before trying a fix; return those fields in the structured report. The exit condition belongs to the pinned verifier. Do not claim the main goal is complete. Use evidence; do not ask to switch models merely because time passed. Do not write Board/knowledge/handoff or message the parent. The shared working directory is not a sandbox; keep changes scoped to this experiment.',
       quest: state.id, contractHash: state.contractHash, contract: state.contract, reportMaxUtf8Bytes: this.config.maxConclusionBytes,
       dependencies: Object.entries(dependencies).map(([id, digest]) => ({ id, digest, certificate: this.store.read(id).state.certificate.ref })),
-      method: plan.method, methodInstruction: METHODS[plan.method],
+      method: plan.method, methodInstruction: this.config.methodInstructions[plan.method],
       observations: state.facts,
       attempts: state.attempts.filter(a => a.epoch === state.epoch).map(a => ({ route: a.routeId, method: a.method, experiment: a.experiment ?? null, outcome: a.outcome, newFacts: a.novelFacts, raw: a.raw ?? null, check: a.check ?? null })),
       artifactPolicy: 'Raw prior attempts are references, not injected transcripts. Read them only when needed. A new persona name does not count as a new method.',
     }, null, 2)
     if (Buffer.byteLength(capsule) <= this.config.maxCapsuleBytes) return capsule
     return JSON.stringify({ quest: state.id, contractHash: state.contractHash, method: plan.method,
-      methodInstruction: METHODS[plan.method], fullCapsule: this.store.blob(capsule),
+      methodInstruction: this.config.methodInstructions[plan.method], fullCapsule: this.store.blob(capsule), reportMaxUtf8Bytes: this.config.maxConclusionBytes,
       instruction: 'The complete task capsule is preserved at this file reference. Read its contract and relevant evidence progressively. Do not import the whole prior experiment transcript. Return the required structured report.' })
   }
 
@@ -146,15 +131,28 @@ export class Quest {
       if (error.code === 'EEXIST') throw new Error('Another quest owns this project workspace; wait or inspect runner.lock after a crash')
       throw error
     }
-    writeFileSync(`${lock}/owner.json`, JSON.stringify({ id, owner, pid: process.pid, started: Date.now() }))
-    try { return await this.execute(id, owner, signal) } finally {
+    let recorded = false
+    try {
+      writeFileSync(projectPath(this.store.root, '.quest-router/runner.lock/owner.json'), JSON.stringify({ id, owner, pid: process.pid, started: Date.now() }), { flag: 'wx' }); recorded = true
+      try { return await this.execute(id, owner, signal) }
+      catch (error) {
+        const row = this.own(id, owner)
+        if (row.state.status !== 'running') this.store.write(id, 'preflight-error', s => ({ ...s, status: signal?.aborted ? 'cancelled' : 'error', reason: error.message }), row.seq)
+        return { ...this.card(id), status: signal?.aborted ? 'cancelled' : 'error', reason: error.message }
+      }
+    } finally {
       // Keep the lock directory empty so rmdir cannot remove an unrelated replacement.
-      unlinkSync(`${lock}/owner.json`); rmdirSync(lock)
+      if (recorded) unlinkSync(`${lock}/owner.json`)
+      rmdirSync(lock)
     }
   }
 
   async execute(id, owner, signal) {
     let row = this.own(id, owner)
+    if (row.state.status === 'cancelled') {
+      this.store.write(id, 'resumed', s => ({ ...s, status: 'open', baseline: null, reason: null, lease: null }), row.seq)
+      row = this.own(id, owner)
+    }
     if (row.state.status === 'accepted' && this.valid(id)) return this.card(id)
     if (row.state.status === 'running') throw new Error('Previous run outcome is unknown; inspect the child and journal before recovery')
     if (row.state.status !== 'open') return this.card(id)
@@ -167,24 +165,44 @@ export class Quest {
       let state = this.store.read(id).state
       if (!state.baseline) {
         const baseline = await runCheck(this.store, check, this.config, { id, epoch: state.epoch, number: 0, contract: state.contract, candidate: null }, signal)
-        state = this.store.write(id, 'baseline', s => ({ ...s, baseline, facts: baseline.facts }))
+        state = this.store.write(id, 'baseline', s => ({ ...s, baseline, facts: [...s.facts, ...baseline.facts.filter(f => !s.facts.some(old => old.key === f.key && old.value === f.value))] }))
         if (baseline.accepted) return this.accept(id, lease, dependencies, { conclusion: 'Exit condition was already satisfied at baseline; no model attempt was needed.', limitations: [] }, baseline)
       }
       while (true) {
         if (signal?.aborted) throw new Error('Quest cancelled')
         state = this.store.read(id).state
-        const used = this.store.list().filter(s => s.owner === owner).reduce((n, s) => n + s.attempts.length, 0)
-        const plan = used >= this.config.maxSessionAttempts ? { blocked: 'session-attempt-budget' } : nextPlan(state, this.config)
+        const plan = nextPlan(state, this.config)
+        if (!plan.blocked && !this.store.reserveAttempt(owner, this.config.maxSessionAttempts, this.config.maxAttempts)) plan.blocked = 'session-attempt-budget'
         if (plan.blocked) {
           this.store.write(id, 'blocked', s => ({ ...s, status: 'blocked', reason: plan.blocked, lease: null }))
           return this.card(id)
         }
         const number = state.attempts.length + 1
-        const attempt = { number, epoch: state.epoch, key: plan.key, routeId: plan.routeId, tier: plan.tier, method: plan.method, evidenceVersion: plan.evidenceVersion, outcome: 'running', novelFacts: 0 }
+        const attempt = { number, epoch: state.epoch, key: plan.key, routeId: plan.routeId, provider: plan.provider, model: plan.model, reasoningEffort: plan.reasoningEffort ?? null, tier: plan.tier, method: plan.method, evidenceVersion: plan.evidenceVersion, outcome: 'running', novelFacts: 0 }
         this.store.write(id, 'attempt-start', s => ({ ...s, attempts: [...s.attempts, attempt] }))
         const prompt = this.capsule(state, plan, dependencies)
         const promptRef = this.store.blob(prompt)
-        const child = await this.runner({ id, number, plan, prompt, promptRef, signal })
+        this.store.write(id, 'attempt-capsule', s => { s.attempts.at(-1).promptRef = promptRef; return s })
+        const reserveChild = childId => this.store.write(id, 'child-reserved', s => { s.attempts.at(-1).childId = childId; return s })
+        let committed = null
+        const commitExperiment = proposal => {
+          if (committed) throw new Error('Experiment already committed; finish this attempt before changing the hypothesis')
+          const experiment = experimentOf(proposal), key = experimentKey(experiment)
+          if (Buffer.byteLength(JSON.stringify(experiment)) > this.config.maxConclusionBytes) throw new Error('Experiment plan exceeds maxConclusionBytes')
+          const current = this.own(id, owner)
+          if (current.state.lease !== lease || signal?.aborted) throw new Error('Experiment lease is no longer active')
+          if (current.state.attempts.some(a => a.epoch === state.epoch && a.routeId === plan.routeId && a.evidenceVersion === plan.evidenceVersion && a.experimentKey === key && !['cancelled', 'infrastructure-error'].includes(a.outcome))) throw new Error('Duplicate experiment on this route and evidence; choose a different hypothesis or discriminating test')
+          this.store.write(id, 'experiment-committed', s => { Object.assign(s.attempts.at(-1), { experiment, experimentKey: key }); return s }, current.seq)
+          committed = experiment
+          return { committed: true }
+        }
+        const pointer = JSON.parse(prompt).fullCapsule
+        const context = pointer ? readFileSync(projectPath(this.store.root, pointer.path), 'utf8') : prompt
+        const readContext = ({ offset = 0, length = 4096 } = {}) => {
+          if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 1 || length > 8192) throw new Error('Invalid context range')
+          return { text: context.slice(offset, offset + length), nextOffset: offset + length < context.length ? offset + length : null }
+        }
+        const child = await this.runner({ id, number, plan, prompt, promptRef, signal, commitExperiment, readContext, reserveChild })
         const raw = this.store.blob(child)
         this.store.write(id, 'child-result', s => { Object.assign(s.attempts.at(-1), { raw, promptRef, childId: child.childId ?? null }); return s })
         if (signal?.aborted) throw new Error('Quest cancelled; partial output retained')
@@ -197,14 +215,12 @@ export class Quest {
           continue
         }
         const report = child.structured
+        if (!committed) throw new Error('Worker did not commit an experiment before execution')
         if (!report || !['hypothesis', 'discriminatingTest', 'expectedObservation', 'conclusion'].every(key => typeof report[key] === 'string' && report[key].trim()) || !Array.isArray(report.limitations) || report.limitations.some(x => typeof x !== 'string') || Buffer.byteLength(JSON.stringify(report)) > this.config.maxConclusionBytes) {
           this.store.write(id, 'invalid-report', s => { Object.assign(s.attempts.at(-1), { outcome: 'invalid-report', raw, promptRef }); return s })
           continue
         }
-        this.store.write(id, 'experiment-report', s => {
-          s.attempts.at(-1).experiment = { hypothesis: report.hypothesis, discriminatingTest: report.discriminatingTest, expectedObservation: report.expectedObservation }
-          return s
-        })
+        if (experimentKey(report) !== experimentKey(committed)) throw new Error('Report changed the committed experiment; observations are not admissible')
         const checked = await runCheck(this.store, check, this.config, { id, epoch: state.epoch, number, contract: state.contract, candidate: report }, signal)
         const novel = checked.facts.filter(f => !state.facts.some(old => old.key === f.key && old.value === f.value))
         const checkRef = this.store.blob(checked)
@@ -218,7 +234,7 @@ export class Quest {
       }
     } catch (error) {
       this.store.write(id, 'execution-error', state => {
-        if (state.attempts.at(-1)?.outcome === 'running') Object.assign(state.attempts.at(-1), { outcome: 'infrastructure-error' })
+        if (state.attempts.at(-1)?.outcome === 'running') Object.assign(state.attempts.at(-1), { outcome: signal?.aborted ? 'cancelled' : 'infrastructure-error' })
         return { ...state, status: signal?.aborted ? 'cancelled' : 'error', reason: error.message, lease: null }
       })
       return this.card(id)
