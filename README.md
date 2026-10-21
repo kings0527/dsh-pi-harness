@@ -311,6 +311,10 @@ third-party licences (MIT, plus one CC BY-SA 4.0 directory) and are kept outside
 the plugin. `HANDOFF.md` describes how a personal setup installs them and which
 licence applies to which directory.
 
+## 隔离实验与多模型路由（可选原型）
+
+[`plugins/quest-router`](plugins/quest-router/README.md) 是独立安装的 DSH bundle：把阻塞步骤作为单独副本，用固定验收器记录进展并调度不同方法/模型，只向主线返回结论证书。逻辑依赖支持失效回溯，绑定主线的耗尽副本可阻止 goal 自动续跑。它隔离会话上下文，当前使用共享工作目录串行执行，尚未在真实 DSH/模型账号上做端到端验证。
+
 ## License
 
 MIT © 2026 kings0527. `dist/core.js` is a build artifact of the MIT-licensed

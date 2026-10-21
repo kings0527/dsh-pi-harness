@@ -1,0 +1,13 @@
+{
+  "name": "@local/dsh-quest-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Evidence-gated, context-isolated experiments and model routing for DeepSeek Harness",
+  "engines": { "node": ">=22" },
+  "exports": { ".": "./index.js" },
+  "files": ["index.js", "core", "cli.js", "cordis.patch.yml", "README.md", "docs", "examples", "LICENSE"],
+  "scripts": { "test": "node --test tests/*.test.js", "demo": "node examples/demo.js" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "license": "MIT"
+}

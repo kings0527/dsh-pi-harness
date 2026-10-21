@@ -1,0 +1,4 @@
+- insert:
+    - id: quest-router
+      name: '@local/dsh-quest-router'
+      config: {}
