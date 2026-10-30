@@ -7,6 +7,8 @@ Review and repair the dsh-pi-harness goal/reference continuity gaps without chan
 3. `index.js:51-65,103-105,146-150`: the first reference-injection failure permanently disables subsequent injection for that agent. There is no recovery or model-visible degradation notice.
 4. `lib/reference.js:21-47,66-90` + `lib/util.js:104-116`: all open-topic bodies are expanded; the combined reference is truncated at its tail, where the handoff pointer lives. An observed initial reference withheld 7180 bytes.
 5. DSH goal state is durable but does not itself produce a model message on every ordinary turn. Goal tools, todo, and exact-repeat tool reminders already exist; do not recreate them.
+6. `lib/reference.js:28-47`: `boardSnapshot()` advances `seqs` to `notes.at(-1)` before per-topic/total truncation. Withheld or truncated notes can therefore be treated as delivered and omitted from later deltas. A cursor must represent actually rendered coverage, not the latest stored note.
+7. `index.js:20`: the bridge injects only `tools`, `workingDirectory`, and `systemPrompt`; `ctx.goals` is not guaranteed. Goal anchoring needs an explicit optional dependency and an absence fallback.
 
 # Evidence boundaries
 - Source audit and one minimal function reproduction are complete. Two independent read-only agents checked pi and DSH lifecycle semantics.
@@ -16,18 +18,19 @@ Review and repair the dsh-pi-harness goal/reference continuity gaps without chan
 - Do not claim runtime fixes, tests, or user-experience improvement until implemented and measured.
 
 # Recommended scope (review before implementation)
-1. Derive recovery from the actual visible session surface, not event counts or every compaction: after `next()` in `agent/pre-step`, check whether the relevant `source.kind=pi-harness` checkpoint is still visible (automatic pressure compaction has already run at that point). Rebuild only when the required reference is absent; keep periodic checkpoints as a fallback. Also cover overflow compaction during `prepareRequest`/`buildRequest`, after pre-step: an admitted old reference may be shadowed in the same step, so do not claim all recovery is deferred to the next step. If an existing DSH active goal is used, reanchor that exact objective without creating/mirroring a second goal authority from Board text; Board remains the task evidence/plan owner.
-2. Always include the latest plan alongside new Board evidence, deduplicated by seq. Quiet turns remain quiet.
+1. Derive recovery lazily from the actual visible session surface, not event counts or every compaction: after `next()` in `agent/pre-step`, check whether the relevant `source.kind=pi-harness` checkpoint is still visible (automatic pressure compaction has already run at that point). Rebuild only when the required reference is absent; keep periodic checkpoints as a fallback. `session/event` is fire-and-forget, not a commit barrier. Also cover overflow compaction during `prepareRequest`/`buildRequest`, after pre-step: an admitted old reference may be shadowed in the same step, so do not claim all recovery is deferred to the next step. If an existing DSH active goal is used, reanchor that exact objective without creating/mirroring a second goal authority from Board text; Board remains the task evidence/plan owner. Declare `goals` as an optional dependency, define fallback when absent, and anchor only `phase=active` goals.
+2. Fix delivery cursors before/while fixing budgets: track actual rendered coverage separately from latest stored seq, so withheld/truncated notes are retried rather than skipped. On a topic with fresh notes, include its latest plan alongside fresh evidence, deduplicated by seq. A topic with no fresh notes stays quiet.
 3. Replace permanent failure latch with bounded retry and recovery; send at most one degradation notice per failure episode.
-4. Give goal/plan/handoff priority in reference budgets; catalog unrelated topics rather than injecting every body. Preserve raw evidence on disk.
+4. Give goal/plan/handoff priority in reference budgets. Do not switch directly to hiding all topic bodies: first define current/participating/deferred semantics and a critical-note channel, preserving raw evidence on disk.
 5. Keep feedback semantic and lightweight: failed hypothesis -> observed result -> excluded conclusion -> discriminating next experiment. No N-step gates or long systems/control-theory SOP.
 
 # Acceptance criteria
 - Regression: old PLAN #1 + new evidence #2 produces both in delta, once each.
-- Regression: pressure compaction that removes the visible checkpoint causes a complete reference at the next pre-step; no intact-checkpoint compaction causes a duplicate. Cover overflow recovery after pre-step separately and assert the exact admitted/request-visible messages rather than assuming a next-step boundary. If an active goal is anchored, its text matches `ctx.goals` exactly and no Board-derived goal is created.
+- Regression: pressure compaction that removes the visible checkpoint causes a complete reference at the next pre-step; no intact-checkpoint compaction causes a duplicate. Cover overflow recovery after pre-step separately and assert the exact admitted/request-visible messages rather than assuming a next-step boundary. If an active goal is anchored, its text matches the optional `goals` service exactly, only `phase=active` is used, absence degrades without breaking Board injection, and no Board-derived goal is created.
+- Regression: a topic body withheld or shortened by either budget does not advance delivered coverage past what was rendered; a later reference retries the missing notes.
 - Regression: transient read failure recovers on a later successful attempt; notification is not repeated every step.
 - Regression: unchanged Board/KB does not inject another delta.
-- Regression: over-budget input preserves goal/latest plan/handoff pointer and declares omitted material.
+- Regression: measure the complete XML-escaped output, including checkpoint and delta. Over-budget input preserves goal/latest plan/handoff pointer and declares omitted material; under tiny budgets the preserved fields and omission markers remain bounded too.
 - Verify normal tool retries do not duplicate reference messages, and real-user/goal-round authorization semantics are unchanged.
 - Run `npm test` and add focused reference/injection tests; current package test script covers only the translator, so new tests must be wired explicitly.
 
