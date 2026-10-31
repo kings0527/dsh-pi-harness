@@ -42,10 +42,11 @@ except the optional core patch described in §4.
 longer load it. To relocate: `remove_bundle`, move the directory, `install_bundle`
 again.
 
-**Editing the clone does not update the profile.** The profile keeps its own copy
-under `~/.dsh/profiles/<name>/node_modules/.pnpm/...`, so after changing
-`package.json`, `cordis.patch.yml` or `local-translator/` in the clone you must
-reinstall:
+**Check whether the profile uses a link or a copy.** A symlink/junction at
+`~/.dsh/profiles/<name>/node_modules/@local/dsh-pi-harness` pointing at the clone
+uses its current files directly; restart DSH after editing plugin code. If the
+profile instead has a copy under `node_modules/.pnpm/...`, reinstall that copy
+before restarting:
 
 ```bash
 cd ~/.dsh/profiles/<name> && pnpm install --force
@@ -165,6 +166,7 @@ does not change. Rebuild afterwards:
 
 ```bash
 bun build core/dsh.ts --outfile ../dsh-pi-harness/dist/core.js --format esm --target node
+node ../dsh-pi-harness/scripts/prepare-core.mjs
 ```
 
 ---
@@ -195,7 +197,7 @@ persists across calls; `--stop` restarts it.
 |---|---|
 | `handoff action=status` | project root, board counts, three knowledge roots |
 | `board action=list` in an existing project | the topics that already exist there |
-| `board action=read topic=… limit=3` on a big topic | 3 notes + `[N earlier notes withheld … since=…]` |
+| `board action=read topic=… limit=3` on a big topic | 3 notes + an explicit notice to use `limit=0` for all notes |
 | `knowledge action=read path=index.md limit=50` | header with byte/line counts, then 50 lines |
 | `ida.cmd --status` | managed daemon + `IDA install : /home/…/ida-pro-*` |
 
@@ -204,8 +206,9 @@ persists across calls; `--stop` restarts it.
 ## 7. Known limits
 
 - No Board UI panel yet; the data is on disk, the panel is additive.
-- `board` has no `participate` action — open-topic bodies are injected with a byte
-  cap, `board action=read` gets the rest.
+- `board` has no `participate` action. All open topics contribute complete
+  records to checkpoints; deltas carry complete changes. Selective join/watch/defer
+  feed behavior from pi has not been ported.
 - `close` recovery is idempotent retry, not pi's three-phase close journal.
 - The plugin never writes `.pi-board/context-snapshots/` (a pi audit artifact).
 - Do not run `pi` and DSH writing the same topic concurrently.

@@ -1,3 +1,5 @@
+// DSH_ROOT_RESOLVER_PATCH v1
+import { knowledgeRoot as dshKnowledgeRoot } from '../lib/knowledge.js';
 // ../pi-harness/core/runtime/root.ts
 import { AsyncLocalStorage } from "node:async_hooks";
 var scope = new AsyncLocalStorage;
@@ -1141,6 +1143,8 @@ function getWorkspaceRoot(startDir = process.cwd()) {
 }
 function getKnowledgeRoot(scope2 = "project") {
   assertScope(scope2);
+  const dshRoot = scopedProjectRoot();
+  if (dshRoot !== undefined) return dshKnowledgeRoot(dshRoot, scope2);
   if (scope2 === "global")
     return join5(homedir(), ".pi-harness", "knowledge");
   if (scope2 === "workspace")

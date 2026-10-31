@@ -1,7 +1,21 @@
 # Goal
-Review and repair the dsh-pi-harness goal/reference continuity gaps without changing DSH core or adding a permanent theory-heavy prompt. No runtime fix has been implemented yet.
+Review and repair the dsh-pi-harness goal/reference continuity gaps without changing DSH core or adding a permanent theory-heavy prompt.
 
-# Verified findings
+## Implementation status — 2026-10-31
+- Implemented locally as plugin version `0.3.0`: latest active-plan anchoring; visible-surface delivery receipts; pressure/overflow compaction recovery; one notice per failure episode with bounded retry; optional read-only active DSH goal anchoring. The user explicitly prioritizes accuracy over token budgets: automatic references now preserve complete selected notes, metadata, goals, catalogs and handoff pointers. Legacy byte limits are ignored.
+- All open topics still participate. Retraction semantics include retracted retractions and topic-qualified targets; prototype-like IDs retain their own coverage records. No partial-note offsets or lossy fallback references are needed.
+- Added `lib/injection.js`, a reproducible `scripts/prepare-core.mjs` adapter, and focused tests under `test/`; the package test script includes them. The prior 51-test suite was insufficient: new regressions cover complete long goals/evidence/catalogs, real project/global read-write round trips, validation errors leaving files unchanged, and WSL home resolver parity. No live session or installed DSH core was changed.
+- Follow-up for missing autonomous Board/KB behavior: restored project/workspace root `KNOWLEDGE.md` navigation and file-access activation of directory knowledge; added an explicit resident Board -> verification -> close -> sourced knowledge workflow. This verifies context activation and rendered instructions, not a same-model behavioral A/B or guaranteed model compliance. The current shipped cordis preset does not use a complete persona, so complete-persona suppression was investigated and ruled out for the present default.
+- The bundled pi core's scoped knowledge resolver delegates to the same DSH resolver as readers; unscoped behavior is preserved. Always run `node scripts/prepare-core.mjs` after rebuilding `dist/core.js`. Clarified that verification targets existing claims, observations use evidence, a failed write saved nothing, and a successful post is not a closed/archive operation.
+- Final 0.3.0 verification: all 64 tests passed under the installed Windows DSH runtime, zero failures/skips. This includes full long-content tails, retractions, target validation before writes, concurrent root scopes, real project/global round trips, WSL resolver parity, actual Session replacement/replay, actual prompt assembly, and the actual translator provider. Automatic knowledge scope boundary checks and ordinary section headings now follow pi's source behavior. WSL parity here checks resolver equality, not a live write to a running distro.
+- Remaining parity boundaries: no same-model long-task A/B has established pi-equivalent stability; all open topics are included rather than pi's selective participation feed. DSH/model context-window limits and the host's compaction still exist. Do not present unit/contract test counts as proof of long-term behavioral equivalence.
+- Desktop profile's `node_modules/@local/dsh-pi-harness` is a junction to `C:\Users\KK\git\dsh-pi-harness`. Restart DSH to load the changed modules. The user will do the restart; do not interrupt their running work.
+- Changes remain local, uncommitted and unpushed. No same-model/same-task A/B or post-restart live-session observation establishes a broader behavioral improvement yet.
+
+## Next
+Restart desktop DSH, verify `handoff action=status`, and exercise a long session with Board plan/evidence, compaction, and transient reference failure. The automated compatibility checks have passed; observe the user-facing behavior after reload. The original audit below is retained as historical evidence; its line numbers refer to `645d300`.
+
+# Audit findings before repair
 1. `lib/board.js:464-486`: `digest(..., {sinceSeq})` drops the latest old plan unless it is in the newly selected notes. Minimal call with PLAN #1 then evidence #2 returned only #2.
 2. `index.js:29-49,118-145`: checkpoint cursors are process-local; full reanchor defaults to every 12 turns and is not tied to actual post-compaction visibility. Bridge references are ordinary user messages, so DSH compaction may replace them with a model summary.
 3. `index.js:51-65,103-105,146-150`: the first reference-injection failure permanently disables subsequent injection for that agent. There is no recovery or model-visible degradation notice.
