@@ -41,6 +41,34 @@ test('installed DSH Session accepts reference messages and replayed compaction r
   assert.match(session.deriveMessages().at(-1).content[0].text, /REAL_SESSION_PLAN/)
 })
 
+test('installed Session upgrades a pending delta without losing its receipt or duplicating recovery', installed, async (t) => {
+  const { Session } = runtime('@deepseek-ai/dsh-session')
+  const f = fixture(t)
+  f.topic('work', [{ content: 'FROZEN_PLAN', kind: 'plan' }])
+  const session = Session.create('frozen-upgrade-contract')
+  const h = host(f.root, { session })
+  bridge.apply(h.ctx, { doctrine: false })
+  await h.step()
+  f.post('work', { content: 'FROZEN_EVIDENCE' })
+  const decision = await h.pre({ turn: 2 })
+  assert.equal(decision.messages[0].source.form, 'delta')
+  const seqs = [...session.surface.nodes]
+  await h.request({ turn: 2 }, async () => {
+    session.append('user/message', {
+      id: 'compact-before-admit', role: 'user', time: Date.now(),
+      content: [{ type: 'text', text: 'Compacted checkpoint' }], source: { kind: 'compact' },
+    }, { surfaceOp: { op: 'replace', startSeq: seqs[0], endSeq: seqs.at(-1) }, sourceEventSeqs: seqs })
+    return { provider: 'test', model: 'test' }
+  })
+  assert.equal(decision.messages[0].source.form, 'reference')
+  for (const entry of decision.messages) session.append('user/message', entry, { surfaceOp: 'append' })
+  await h.request({ turn: 2 })
+  const messages = session.deriveMessages()
+  assert.equal(messages.filter((entry) => entry.source.kind === 'pi-harness').length, 1)
+  assert.match(messages.at(-1).content[0].text, /FROZEN_EVIDENCE/)
+  assert.equal((await h.pre({ turn: 3 })).messages.length, 0)
+})
+
 test('installed Cordis keeps bridge mounted while optional goals appear and disappear', installed, async (t) => {
   const { Context } = runtime('@deepseek-ai/cordis')
   const { Session } = runtime('@deepseek-ai/dsh-session')

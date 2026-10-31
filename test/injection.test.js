@@ -154,7 +154,7 @@ test('a pending delta is upgraded in place when its baseline disappears during r
     return { provider: 'test', model: 'test' }
   })
   assert.equal(decision.messages[1].source.form, 'reference')
-  assert.match(text(decision.messages[1]), /knowledge-catalog/)
+  assert.match(text(decision.messages[1]), /Global knowledge index/)
   for (const entry of decision.messages) h.session.append('user/message', entry, { surfaceOp: 'append' })
   assert.equal(h.session.messages[0].id, user.id)
   assert.equal(refs(h).length, 1)
@@ -231,7 +231,7 @@ test('tools-only mode does not register injection hooks', (t) => {
 
 test('long references preserve their tail across periodic reanchors', async (t) => {
   const f = fixture(t)
-  f.topic('work', [{ content: 'x'.repeat(100000) }, { content: 'FINAL_TAIL' }])
+  f.topic('work', [{ content: 'x'.repeat(100000), kind: 'plan' }, { content: 'FINAL_TAIL' }])
   const h = setup(f)
   for (let turn = 1; turn <= 20; turn++) await h.step({ turn, step: 0 })
   assert.ok(refs(h).some((entry) => text(entry).includes('FINAL_TAIL')))

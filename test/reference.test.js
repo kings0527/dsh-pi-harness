@@ -26,9 +26,9 @@ test('kind=plan is pinned without requiring a redundant tag', (t) => {
   assert.match(buildDelta(f.root, before).text, /\[PLAN\].*TYPED_PLAN/)
 })
 
-test('long notes are delivered in full immediately and cursor includes the actual tail', (t) => {
+test('a long active plan is delivered in full and its receipt includes the tail', (t) => {
   const f = fixture(t)
-  f.topic('large', [{ content: 'X'.repeat(180000) }, { content: 'LAST_NOTE' }])
+  f.topic('large', [{ content: 'X'.repeat(180000), kind: 'plan' }, { content: 'LAST_NOTE' }])
   const built = buildReference(f.root)
   assert.equal(built.board.large, 2)
   assert.ok(built.text.includes('X'.repeat(180000)))
@@ -36,16 +36,21 @@ test('long notes are delivered in full immediately and cursor includes the actua
   assert.equal(buildDelta(f.root, built), null)
 })
 
-test('every open topic is complete even with legacy byte limits supplied', (t) => {
+test('unrendered topics never advance receipts and later deltas deliver the backlog', (t) => {
   const f = fixture(t)
-  for (let i = 0; i < 35; i++) f.topic(`t${i}`, [{ content: `MARKER_${i}_` + 'x'.repeat(1200) }])
-  const built = buildReference(f.root, { maxBytes: 4000 })
-  assert.ok(Buffer.byteLength(built.text) > 4000)
-  for (let i = 0; i < 35; i++) {
-    assert.equal(built.board[`t${i}`], 1)
-    assert.match(built.text, new RegExp(`MARKER_${i}_`))
+  for (let i = 0; i < 200; i++) f.topic(`t${String(i).padStart(3, '0')}`, [{ content: `MARKER_${i}_` }])
+  let built = buildReference(f.root)
+  assert.equal(Object.hasOwn(built.board, 't199'), false)
+  assert.equal(buildDelta(f.root, built) === null, false)
+  const delivered = new Set()
+  for (let page = 0; built && page < 30; page++) {
+    const board = built.omitted.find((group) => group.key === 'board')
+    assert.equal(built.text.split('MARKER_').length - 1, board.shown)
+    for (const id of Object.keys(built.board)) delivered.add(id)
+    built = buildDelta(f.root, built)
   }
-  assert.equal(buildDelta(f.root, built), null)
+  assert.equal(built, null)
+  assert.equal(delivered.size, 200)
 })
 
 test('complete XML-escaped goal, plan and handoff constraints survive without caps', (t) => {
@@ -62,16 +67,16 @@ test('complete XML-escaped goal, plan and handoff constraints survive without ca
   for (const marker of ['GOAL_CRITICAL_END', 'PLAN_END', 'HANDOFF_CRITICAL_END', 'TOPIC_END', 'EVIDENCE_END']) assert.ok(next.text.includes(marker), marker)
 })
 
-test('legacy zero/tiny budgets cannot silently omit reference content', (t) => {
+test('legacy byte limits are ignored but fallback rows do not advance boardSnapshot receipts', (t) => {
   const f = fixture(t)
   f.topic('work', [{ content: 'COMPLETE_NOTE_' + 'x'.repeat(3000) }])
-  for (const maxBytes of [0, 1, 20, 80, 400, 600]) {
-    const built = buildReference(f.root, { maxBytes })
-    assert.match(built.text, /COMPLETE_NOTE_/)
-    assert.equal(built.board.work, 1)
-    assert.ok(!built.text.includes('omitted="budget"'))
-  }
-  assert.equal(boardSnapshot(f.root, { totalBytes: 1 }).seqs.work, 1)
+  const built = buildReference(f.root, { maxBytes: 0 })
+  assert.match(built.text, /board read topic="work"/)
+  assert.equal(built.board.work, undefined)
+  assert.equal(boardSnapshot(f.root, { totalBytes: 1, budgetTokens: 2048 }).seqs.work, undefined)
+  const delivered = buildDelta(f.root, built, { budgetTokens: 10000 })
+  assert.equal(delivered.board.work, 1)
+  assert.equal(buildDelta(f.root, delivered, { budgetTokens: 10000 }), null)
 })
 
 test('structured targets, verdicts, actor identity and unknowns remain visible', (t) => {
@@ -85,17 +90,17 @@ test('structured targets, verdicts, actor identity and unknowns remain visible',
   for (const marker of ['actor-exact', 'EXACT_VERDICT', 'targets', 'unresolved', 'material']) assert.ok(built.text.includes(marker), marker)
 })
 
-test('large indexed and free-form knowledge catalogs retain their complete tails', (t) => {
+test('knowledge indexes page without clipping rows and invalidate when rewritten', (t) => {
   const f = fixture(t)
   mkdirSync(join(f.root, 'knowledge'))
   const path = join(f.root, 'knowledge', 'index.md')
   writeFileSync(path, Array.from({ length: 500 }, (_, i) => `row-${i}.md | description ${i} ` + 'd'.repeat(500)).join('\n'))
   const indexed = buildReference(f.root)
-  assert.match(indexed.text, /row-499\.md/)
-  assert.ok(indexed.text.includes('d'.repeat(500)))
+  assert.match(indexed.text, /knowledge list scope=project offset=/)
+  assert.ok(indexed.text.includes('496 whole row(s) remain'))
   writeFileSync(path, Array.from({ length: 180 }, (_, i) => `Free form line ${i}`).join('\n'))
   const free = buildDelta(f.root, indexed)
-  assert.match(free.text, /Free form line 179/)
+  assert.match(free.text, /Project knowledge index/)
   assert.equal(buildDelta(f.root, free), null)
 })
 
@@ -108,6 +113,24 @@ test('a replaced topic and a new handoff are detected without new sequence numbe
   assert.match(replaced.text, /REPLACED/)
   f.handoff('NEW_HANDOFF')
   assert.match(buildDelta(f.root, replaced).text, /NEW_HANDOFF/)
+})
+
+test('unreadable topics degrade to an index warning without receipts or exceptions', (t) => {
+  const f = fixture(t)
+  const path = join(f.root, '.pi-board', 'topics', 'broken.jsonl')
+  mkdirSync(join(f.root, '.pi-board', 'topics'), { recursive: true })
+  writeFileSync(path, '#META#{"id":"broken","goal":"recover later","status":"open","createdAt":1000}\nnot-json\n')
+  const before = buildReference(f.root)
+  assert.match(before.text, /Board topic broken is unreadable/)
+  assert.equal(before.board.broken, undefined)
+  const next = buildDelta(f.root, before)
+  assert.match(next.text, /Board topic broken is unreadable/)
+  assert.equal(next.board.broken, undefined)
+  mkdirSync(join(f.root, '.pi-board', 'topics', 'archive'), { recursive: true })
+  writeFileSync(join(f.root, '.pi-board', 'topics', 'archive', 'old.jsonl'), '#META#{"id":"old","goal":"old","status":"closed","createdAt":1000}\nnot-json\n')
+  const archived = buildDelta(f.root, next)
+  assert.match(archived.text, /Board topic old is unreadable/)
+  assert.equal(archived.archived.old, undefined)
 })
 
 test('withdrawn plans are not repinned; historical records keep their retraction metadata', (t) => {

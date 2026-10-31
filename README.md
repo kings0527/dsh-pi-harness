@@ -241,17 +241,18 @@ each model request. A checkpoint or delta removed by compaction triggers a fresh
 checkpoint, including on an overflow retry in the same step. The periodic timer
 remains a fallback for older hosts without a derived-surface API.
 
-Version 0.4.0 injects a compact, source-addressable index rather than full Board
-notes or knowledge bodies. The default `referenceBudgetTokens` is 4096; it
-budgets the complete injected message, including its XML wrapper, using one
-conservative estimate unit per UTF-8 byte. This intentionally overestimates
-typical tokenizers. The configured value is clamped to a 2048-unit minimum so
-the index and paging instructions can fit. It does not reserve space for the rest
-of the conversation or guarantee a provider-specific context limit. Set it below
-4096 when using a provider with a tighter prompt limit. Rows are included whole;
-an oversized description becomes a whole source pointer, and rows that do not
-fit are reported with a paged tool command. Full sources stay on disk and can be
-read with `board read` or `knowledge read`.
+Version 0.4.0 injects a compact, source-addressable index for Board history and
+knowledge, plus the active goal, latest active plan/fresh notes and handoff
+pointer needed to recover the task. The default `referenceBudgetTokens` is 4096;
+it budgets secondary index rows, including the XML wrapper, using one
+conservative estimate unit per UTF-8 byte. Required recovery text is never
+clipped or replaced by a pointer and may exceed that budget. The configured
+value is clamped to a 2048-unit minimum so index paging instructions can fit.
+It does not reserve space for the rest of the conversation or guarantee a
+provider-specific context limit. Ordinary rows are included whole; an oversized
+description becomes a source pointer, and rows that do not fit are reported
+with a paged tool command. Full sources stay on disk and can be read with
+`board read` or `knowledge read`.
 
 An optional Cordis child dependency reads an existing `goals` service. Only its
 active objective is quoted, without creating a second goal or changing goal-round
@@ -276,17 +277,18 @@ Reference budget: 4096 conservative token-estimate units (UTF-8 byte proxy); row
 
 - First turn: a full **checkpoint**. Later turns: **deltas** only, and only when
   something changed. A quiet turn injects nothing.
-- Each open Board topic has one summary row with its goal, note count, latest
-  plan sequence, and convergence state. Read its full notes with `board read`.
+- Each changed open Board topic has one summary row with its goal, note count,
+  latest plan sequence, convergence state, current active plan and fresh notes.
+  Read older history with `board read`.
 - Project, workspace, and global knowledge indexes are paged. Read selected
   source files with `knowledge read`; root `KNOWLEDGE.md` can be read the same way.
 - If a checkpoint cannot fit every row, it reports the exact remaining row count
   and the next `offset` for `board list` or `knowledge list`. No note or index row
   is cut mid-text.
 - Delivery receipts advance only after the message is on the visible session
-  surface. A committed reference records the scanned index state; any rows left
-  out by the budget are called out with a page command. A proposal that never
-  reached the session surface does not advance the snapshot.
+  surface. Only complete rendered rows advance a topic cursor; omitted or
+  fallback rows remain fresh for a later delta. A proposal that never reached
+  the session surface does not advance the snapshot.
 - Transient injection failures produce one degradation notice per failure
   episode, log `.pi-board/dsh-inject-error.txt` when possible, and retry with
   bounded backoff. A broken reference never takes a turn down.
