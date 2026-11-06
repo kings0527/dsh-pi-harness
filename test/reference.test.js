@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { digest } from '../lib/board.js'
-import { buildDelta, buildReference, boardSnapshot } from '../lib/reference.js'
+import { buildDelta, buildReference, boardSnapshot, HARD_MAX_REFERENCE_BYTES } from '../lib/reference.js'
 import { truncateBytes } from '../lib/util.js'
 import { fixture } from './fixtures.js'
 
@@ -26,13 +26,32 @@ test('kind=plan is pinned without requiring a redundant tag', (t) => {
   assert.match(buildDelta(f.root, before).text, /\[PLAN\].*TYPED_PLAN/)
 })
 
-test('a long active plan is delivered in full and its receipt includes the tail', (t) => {
+test('a huge active plan keeps its head and tail inside the recovery ceiling', (t) => {
   const f = fixture(t)
   f.topic('large', [{ content: 'X'.repeat(180000), kind: 'plan' }, { content: 'LAST_NOTE' }])
   const built = buildReference(f.root)
   assert.equal(built.board.large, 2)
-  assert.ok(built.text.includes('X'.repeat(180000)))
+  assert.ok(Buffer.byteLength(built.text) <= HARD_MAX_REFERENCE_BYTES, 'the message stays under the hard ceiling')
+  assert.ok(built.text.includes('X'.repeat(20000)), 'the plan head survives')
+  assert.match(built.text, /read the complete source/, 'the omission is named, not silent')
+  assert.match(built.text, /board read topic="large" limit=0/)
   assert.match(built.text, /LAST_NOTE/)
+  assert.equal(buildDelta(f.root, built), null)
+})
+
+test('a board with hundreds of large notes indexes instead of re-injecting its history', (t) => {
+  const f = fixture(t)
+  const notes = [{ content: 'PLAN_HEAD' + 'p'.repeat(4000) + 'PLAN_TAIL', kind: 'plan' }]
+  for (let i = 0; i < 80; i++) notes.push({ content: `NOTE_${i}_` + 'n'.repeat(4000) })
+  f.topic('bulk', notes)
+  const built = buildReference(f.root)
+  assert.ok(Buffer.byteLength(built.text) <= HARD_MAX_REFERENCE_BYTES, 'the message stays under the hard ceiling')
+  assert.ok(Buffer.byteLength(built.text) < 64 * 1024, 'one topic cannot dominate the reference')
+  assert.match(built.text, /PLAN_HEAD/)
+  assert.match(built.text, /PLAN_TAIL/)
+  assert.match(built.text, /NOTE_79_/, 'the newest note is indexed')
+  assert.match(built.text, /earlier note\(s\) through #\d+ are indexed but not expanded/)
+  assert.match(built.text, /board read topic="bulk"/)
   assert.equal(buildDelta(f.root, built), null)
 })
 
@@ -53,7 +72,7 @@ test('unrendered topics never advance receipts and later deltas deliver the back
   assert.equal(delivered.size, 200)
 })
 
-test('complete XML-escaped goal, plan and handoff constraints survive without caps', (t) => {
+test('complete XML-escaped goal, plan and handoff survive while note bodies become index rows', (t) => {
   const f = fixture(t)
   const objective = '<&>😀'.repeat(10000) + 'GOAL_CRITICAL_END'
   f.handoff('handoff detail '.repeat(1000) + 'HANDOFF_CRITICAL_END')
@@ -62,14 +81,18 @@ test('complete XML-escaped goal, plan and handoff constraints survive without ca
   const first = buildReference(f.root, { maxBytes: 4000, goal })
   for (const marker of ['GOAL_CRITICAL_END', 'PLAN_BEGIN', 'PLAN_END', 'HANDOFF_CRITICAL_END', 'TOPIC_END']) assert.ok(first.text.includes(marker), marker)
   assert.ok(first.text.includes('&lt;&amp;&gt;😀'))
+  assert.ok(Buffer.byteLength(first.text) <= HARD_MAX_REFERENCE_BYTES, 'the message stays under the hard ceiling')
   f.post('work', { content: '<&>'.repeat(20000) + 'EVIDENCE_END' })
   const next = buildDelta(f.root, first, { maxBytes: 1, goal })
-  for (const marker of ['GOAL_CRITICAL_END', 'PLAN_END', 'HANDOFF_CRITICAL_END', 'TOPIC_END', 'EVIDENCE_END']) assert.ok(next.text.includes(marker), marker)
+  for (const marker of ['GOAL_CRITICAL_END', 'PLAN_END', 'HANDOFF_CRITICAL_END', 'TOPIC_END']) assert.ok(next.text.includes(marker), marker)
+  assert.match(next.text, /board read topic="work" limit=0/, 'the full evidence body is named, not inlined')
+  assert.ok(!next.text.includes('EVIDENCE_END'), 'a fresh note body is an index row, not inlined history')
+  assert.ok(Buffer.byteLength(next.text) <= HARD_MAX_REFERENCE_BYTES, 'the delta stays under the hard ceiling')
 })
 
 test('legacy byte limits are ignored but fallback rows do not advance boardSnapshot receipts', (t) => {
   const f = fixture(t)
-  f.topic('work', [{ content: 'COMPLETE_NOTE_' + 'x'.repeat(3000) }])
+  f.topic('work', [{ content: 'COMPLETE_NOTE_' + 'x'.repeat(3000) }], { goal: 'G'.repeat(4000) })
   const built = buildReference(f.root, { maxBytes: 0 })
   assert.match(built.text, /board read topic="work"/)
   assert.equal(built.board.work, undefined)

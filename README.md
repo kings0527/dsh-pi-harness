@@ -241,17 +241,29 @@ each model request. A checkpoint or delta removed by compaction triggers a fresh
 checkpoint, including on an overflow retry in the same step. The periodic timer
 remains a fallback for older hosts without a derived-surface API.
 
-Version 0.4.0 injects a compact, source-addressable index for Board history and
+Version 0.4.1 injects a compact, source-addressable index for Board history and
 knowledge, plus the active goal, latest active plan/fresh notes and handoff
 pointer needed to recover the task. The default `referenceBudgetTokens` is 4096;
 it budgets secondary index rows, including the XML wrapper, using one
-conservative estimate unit per UTF-8 byte. Required recovery text is never
-clipped or replaced by a pointer and may exceed that budget. The configured
-value is clamped to a 2048-unit minimum so index paging instructions can fit.
-It does not reserve space for the rest of the conversation or guarantee a
-provider-specific context limit. Ordinary rows are included whole; an oversized
-description becomes a source pointer, and rows that do not fit are reported
-with a paged tool command. Full sources stay on disk and can be read with
+conservative estimate unit per UTF-8 byte. The configured value is clamped to a
+2048-unit minimum so index paging instructions can fit. It does not reserve space
+for the rest of the conversation by itself.
+
+Required recovery text (active goal, handoff pointer, changed topic row with its
+latest plan) is never dropped or replaced by a bare pointer, but each recovery
+block is bounded to its head and tail with an explicit omission marker naming the
+tool call that restores the complete source: 64 KiB per block and 128 KiB for the
+whole message, shortened progressively if several blocks are large at once.
+Inside a topic row the latest active plan keeps up to 48 KiB, and every other note
+renders as one index line (markers, `seq`, author, a 240-character head of the
+body, and its structured metadata such as actor, `material`, `targets`, `verdict`
+and `unresolved`) within a 12 KiB digest budget; notes that do not fit are counted
+in one pointer with the paging command. This keeps a fresh session or a
+post-compaction checkpoint small even when a Board topic has thousands of large
+notes, which an unbounded full-body digest previously turned into a multi-megabyte
+prompt after a provider switch. Ordinary index rows are still included whole; an
+oversized description becomes a source pointer, and rows that do not fit are
+reported with a paged tool command. Full sources stay on disk and can be read with
 `board read` or `knowledge read`.
 
 An optional Cordis child dependency reads an existing `goals` service. Only its
@@ -270,7 +282,7 @@ Open Board index (1 of 1 rows shown):
 - Board topic <id> is open for <goal>; it has <n> notes through #<n>, latest plan #<n>, and ...; read details with board read topic="<id>".
 Project knowledge index (1 of 1 rows shown):
 - Knowledge project/<path>: <one-line description>; read the source with knowledge read path="<path>" scope="project".
-Reference budget: 4096 conservative token-estimate units (UTF-8 byte proxy); rows are whole and source material stays on disk.
+Reference budget: 4096 conservative token-estimate units (UTF-8 byte proxy); recovery blocks keep their head and tail, long notes render as one-line index rows, and complete source material stays on disk.
 </data>
 </pi_harness_reference>
 ```
@@ -278,13 +290,15 @@ Reference budget: 4096 conservative token-estimate units (UTF-8 byte proxy); row
 - First turn: a full **checkpoint**. Later turns: **deltas** only, and only when
   something changed. A quiet turn injects nothing.
 - Each changed open Board topic has one summary row with its goal, note count,
-  latest plan sequence, convergence state, current active plan and fresh notes.
-  Read older history with `board read`.
+  latest plan sequence, convergence state, the current active plan (up to 48 KiB,
+  head and tail), and one index line per fresh note. Read the full note bodies
+  with `board read`; the row names the exact command.
 - Project, workspace, and global knowledge indexes are paged. Read selected
   source files with `knowledge read`; root `KNOWLEDGE.md` can be read the same way.
 - If a checkpoint cannot fit every row, it reports the exact remaining row count
-  and the next `offset` for `board list` or `knowledge list`. No note or index row
-  is cut mid-text.
+  and the next `offset` for `board list` or `knowledge list`. Index rows are never
+  cut mid-row; note bodies are not inlined at all, and a recovery block that is too
+  large keeps its head and tail with an explicit omission marker.
 - Delivery receipts advance only after the message is on the visible session
   surface. Only complete rendered rows advance a topic cursor; omitted or
   fallback rows remain fresh for a later delta. A proposal that never reached
