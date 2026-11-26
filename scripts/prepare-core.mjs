@@ -7,14 +7,19 @@ import { fileURLToPath } from 'node:url'
 const marker = '// DSH_ROOT_RESOLVER_PATCH v1'
 const dependency = "import { knowledgeRoot as dshKnowledgeRoot } from '../lib/knowledge.js';"
 
+function sanitizeBuildPaths(source) {
+  return source.replace(/^var __dirname = "[^"]*";$/gm, 'var __dirname = ".";')
+}
+
 export function prepareCore(source) {
-  if (source.includes(marker)) {
-    if (!source.includes(dependency) || !source.includes('return dshKnowledgeRoot(dshRoot,')) throw new Error('Incomplete DSH knowledge-root patch')
-    return source
+  const cleaned = sanitizeBuildPaths(source)
+  if (cleaned.includes(marker)) {
+    if (!cleaned.includes(dependency) || !cleaned.includes('return dshKnowledgeRoot(dshRoot,')) throw new Error('Incomplete DSH knowledge-root patch')
+    return cleaned
   }
   const entry = /function getKnowledgeRoot\((\w+)\s*=\s*["']project["']\)\s*\{\r?\n(\s*)assertScope\(\1\);/
-  if (!entry.test(source)) throw new Error('Unknown pi core knowledge resolver; review the rebuilt bundle before using it')
-  const patched = source.replace(entry, (matched, scope, indent) => `${matched}\n${indent}const dshRoot = scopedProjectRoot();\n${indent}if (dshRoot !== undefined) return dshKnowledgeRoot(dshRoot, ${scope});`)
+  if (!entry.test(cleaned)) throw new Error('Unknown pi core knowledge resolver; review the rebuilt bundle before using it')
+  const patched = cleaned.replace(entry, (matched, scope, indent) => `${matched}\n${indent}const dshRoot = scopedProjectRoot();\n${indent}if (dshRoot !== undefined) return dshKnowledgeRoot(dshRoot, ${scope});`)
   return `${marker}\n${dependency}\n${patched}`
 }
 

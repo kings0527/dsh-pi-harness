@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createRequire } from 'node:module'
 import * as bridge from '../index.js'
+import * as commandsPlugin from '../commands.js'
 import { fixture, host } from './fixtures.js'
 
 const anchor = process.env.DSH_INSTALL_ANCHOR
@@ -116,4 +117,122 @@ test('installed prompt registry actually renders the autonomous Board and knowle
   assert.match(prompt, /knowledge action=add/)
   assert.match(prompt, /Respect plan mode and read-only restrictions/)
   assert.equal(prompt.split('# Board and Knowledge Workflow').length - 1, 1)
+})
+
+test('installed Cordis + SystemPrompt + Commands mount bridge and /flux /field cleanly', installed, async (t) => {
+  const { Context } = runtime('@deepseek-ai/cordis')
+  const { SystemPrompt, renderPrompt } = runtime('@deepseek-ai/dsh-system-prompt')
+  const Commands = runtime('@deepseek-ai/dsh-commands')
+  const { Session } = runtime('@deepseek-ai/dsh-session')
+  const f = fixture(t)
+  const ctx = new Context()
+  const registeredTools = new Set()
+  ctx.provide('tools', {
+    register: (def) => {
+      registeredTools.add(def.name)
+      return () => registeredTools.delete(def.name)
+    },
+  })
+  ctx.provide('workingDirectory', { get: () => f.root, ensure: async () => f.root })
+  const promptPlugin = await ctx.plugin(SystemPrompt, {})
+  const cmdService = await ctx.plugin(Commands.default ?? Commands, {})
+  const mountedBridge = await ctx.plugin(bridge, { injectReference: false })
+  const mountedCmds = await ctx.plugin(commandsPlugin, {})
+  t.after(async () => {
+    await mountedCmds.dispose()
+    await mountedBridge.dispose()
+    await cmdService.dispose()
+    await promptPlugin.dispose()
+  })
+
+  for (const name of ['board', 'knowledge', 'handoff', 'field', 'flux']) {
+    assert.ok(registeredTools.has(name), `expected tool "${name}" to be registered`)
+  }
+  const agent = { id: 'real-dsh-agent', session: Session.create('real-dsh-agent') }
+  const cmdNames = ctx.commands.list(agent).map((c) => c.name)
+  assert.ok(cmdNames.includes('flux'))
+  assert.ok(cmdNames.includes('field'))
+
+  // Ordinary session prompt stays free of Live Field discipline until joined
+  const basePrompt = renderPrompt(await ctx.systemPrompt.assemble({ agent }))
+  assert.doesNotMatch(basePrompt, /Live Sideline Field/)
+
+  // Invoking real /field open & /flux status through installed dsh-commands
+  const openExec = await ctx.commands.execute(
+    agent,
+    '/field open contract-field verify real DSH hooks',
+    [],
+    new AbortController().signal,
+  )
+  assert.equal(openExec.result.kind, 'success')
+  const fluxExec = await ctx.commands.execute(agent, '/flux status', [], new AbortController().signal)
+  assert.equal(fluxExec.result.kind, 'success')
+  assert.match(fluxExec.result.text, /Live Flux mode: ON/)
+  const livePrompt = renderPrompt(await ctx.systemPrompt.assemble({ agent }))
+  assert.match(livePrompt, /Live Sideline Field \(contract-field\)/)
+  assert.match(livePrompt, /DRIVE BY WORLD FEEDBACK/)
+})
+
+test('installed DSH Session validates and restores tool-workflow/* inline panel events emitted by flux run', installed, async (t) => {
+  const { Session } = runtime('@deepseek-ai/dsh-session')
+  const f = fixture(t)
+  const registeredTools = new Map()
+  const mockSubagents = {
+    getProvider: (name) => (name === 'spawn' ? { name: 'spawn', inheritsParentContext: false } : undefined),
+    async startActivation(spec) {
+      return {
+        childId: spec.childId,
+        name: spec.name,
+        result: Promise.resolve({
+          output: [{ type: 'text', text: `${spec.label} verified` }],
+          stopReason: 'completed',
+        }),
+        dispose: async () => {},
+      }
+    },
+  }
+
+  const h = host(f.root, { session: Session.create('flux-panel-contract') })
+  h.ctx.tools = {
+    register: (def) => {
+      registeredTools.set(def.name, def)
+      return () => registeredTools.delete(def.name)
+    },
+  }
+  h.ctx.subagents = mockSubagents
+  bridge.apply(h.ctx, { injectReference: false, doctrine: false })
+
+  const fluxDef = registeredTools.get('flux')
+  assert.ok(fluxDef, 'flux tool registered')
+  const card = fluxDef.presentCall({ action: 'run', topic: 'panel-check', question: 'Verify inline status' })
+  assert.match(card.title, /flux · panel-check/)
+
+  const parentSession = Session.create('flux-panel-parent')
+  const parentAgent = { id: 'flux-panel-parent', session: parentSession }
+  await fluxDef.execute(
+    {
+      action: 'run',
+      topic: 'panel-check',
+      question: 'Verify inline status',
+      lenses: ['spine', 'seam'],
+      mode: 'shared',
+    },
+    { agent: parentAgent, signal: new AbortController().signal },
+  )
+
+  // Real DSH Session accepted every tool-workflow/* event without adding any LLM surface tokens
+  assert.equal(parentSession.deriveMessages().length, 0)
+  const wfEvents = parentSession.snapshotEvents().filter((e) => e.type.startsWith('tool-workflow/'))
+  assert.equal(wfEvents.length, 6)
+  assert.equal(wfEvents[0].type, 'tool-workflow/run-start')
+  assert.equal(wfEvents.at(-1).type, 'tool-workflow/run-end')
+
+  // Restoring the real DSH Session from snapshot preserves all inline panel events cleanly
+  const restored = Session.fromRestore(
+    'flux-panel-parent',
+    parentSession.snapshotEvents(),
+    parentSession.header,
+    parentSession.inheritedEventCount,
+  )
+  assert.equal(restored.snapshotEvents().filter((e) => e.type.startsWith('tool-workflow/')).length, 6)
 })

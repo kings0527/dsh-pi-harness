@@ -9,7 +9,7 @@ Review and repair the dsh-pi-harness goal/reference continuity gaps without chan
 - The bundled pi core's scoped knowledge resolver delegates to the same DSH resolver as readers; unscoped behavior is preserved. Always run `node scripts/prepare-core.mjs` after rebuilding `dist/core.js`. Clarified that verification targets existing claims, observations use evidence, a failed write saved nothing, and a successful post is not a closed/archive operation.
 - Final 0.3.0 verification: all 64 tests passed under the installed Windows DSH runtime, zero failures/skips. This includes full long-content tails, retractions, target validation before writes, concurrent root scopes, real project/global round trips, WSL resolver parity, actual Session replacement/replay, actual prompt assembly, and the actual translator provider. Automatic knowledge scope boundary checks and ordinary section headings now follow pi's source behavior. WSL parity here checks resolver equality, not a live write to a running distro.
 - Remaining parity boundaries: no same-model long-task A/B has established pi-equivalent stability; all open topics are included rather than pi's selective participation feed. DSH/model context-window limits and the host's compaction still exist. Do not present unit/contract test counts as proof of long-term behavioral equivalence.
-- Desktop profile's `node_modules/@local/dsh-pi-harness` is a junction to `C:\Users\KK\git\dsh-pi-harness`. Restart DSH to load the changed modules. The user will do the restart; do not interrupt their running work.
+- Desktop profile's `node_modules/@local/dsh-pi-harness` is a junction to `<path-to-dsh-pi-harness>`. Restart DSH to load the changed modules. The user will do the restart; do not interrupt their running work.
 - Changes remain local, uncommitted and unpushed. No same-model/same-task A/B or post-restart live-session observation establishes a broader behavioral improvement yet.
 
 ## Next
@@ -50,7 +50,7 @@ Restart desktop DSH, verify `handoff action=status`, and exercise a long session
 
 # Review and delivery
 - Independent reviewer should challenge the proposed DSH integration point, replay/compaction correctness, duplicate delivery, retry recovery, and test sufficiency.
-- DSH runtime evidence was from `/Users/kk/.npm/_npx/1e7f6d9597241db0/` (reported 0.2.1-rc.2); pi comparison was `/Users/kk/git/pi-harness`.
+- DSH runtime evidence was from `~/.npm/_npx/<cache>/` (reported 0.2.1-rc.2); pi comparison was `~/git/pi-harness`.
 - Audit archive: `.pi-board/topics/archive/harness-goal-continuity-audit.{jsonl,summary.md,decisions.md}`; material verification is #5.
 - Global knowledge: `knowledge(global:harness/dsh-pi-context-feedback-audit.md)`.
 - Repository was clean at `1c16096` (`main`, same as `origin/main`) before this handoff. Keep the handoff directory ignored and add only the specific dated handoff with `git add -f`; do not add Board/knowledge/runtime artifacts or weaken ignore rules.

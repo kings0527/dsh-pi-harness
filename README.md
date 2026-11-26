@@ -30,9 +30,10 @@ DSH (Win)  ─┘
 
 ## What you get
 
-| Capability | Tool | On disk |
+| Capability | Tool / Command | On disk |
 |---|---|---|
 | Shared Board (multi-agent, cross-session) | `board` | `.pi-board/topics/*.jsonl` |
+| Live Flux & Sideline Field (parallel exploration) | `flux`, `field` / `/flux`, `/field` | `.pi-board/fields/`, `~/.pi-harness/flux.json` |
 | Tiered knowledge (project / workspace / global) | `knowledge` | `knowledge/`, `~/.pi-harness/knowledge/` |
 | Session handoff / directory takeover | `handoff` | `handoff/*.md` |
 | Always-on doctrine | system prompt section | — |

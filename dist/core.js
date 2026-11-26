@@ -1,6 +1,6 @@
 // DSH_ROOT_RESOLVER_PATCH v1
 import { knowledgeRoot as dshKnowledgeRoot } from '../lib/knowledge.js';
-// ../pi-harness/core/runtime/root.ts
+// core/runtime/root.ts
 import { AsyncLocalStorage } from "node:async_hooks";
 var scope = new AsyncLocalStorage;
 function scopedProjectRoot() {
@@ -9,7 +9,7 @@ function scopedProjectRoot() {
 function runWithProjectRoot(root, operation) {
   return scope.run(root, operation);
 }
-// ../pi-harness/core/board/index.ts
+// core/board/index.ts
 import {
   appendFileSync as appendFileSync2,
   closeSync,
@@ -26,7 +26,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { join as join4 } from "node:path";
 
-// ../pi-harness/core/storage/index.ts
+// core/storage/index.ts
 import { mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 var storageRoot = null;
@@ -53,7 +53,7 @@ function ensureDir(dir) {
   }
 }
 
-// ../pi-harness/core/events/index.ts
+// core/events/index.ts
 import { appendFileSync, mkdirSync as mkdirSync2 } from "node:fs";
 import { dirname, join as join2 } from "node:path";
 function appendEvent(type, details, root) {
@@ -69,7 +69,7 @@ function appendEvent(type, details, root) {
 `, "utf-8");
 }
 
-// ../pi-harness/core/board/integrity.ts
+// core/board/integrity.ts
 import { existsSync as existsSync2, readFileSync } from "node:fs";
 import { join as join3 } from "node:path";
 function assertTopicId(topicId) {
@@ -246,7 +246,7 @@ function assertArchivedTopicIntact(topicId) {
   return report;
 }
 
-// ../pi-harness/core/board/index.ts
+// core/board/index.ts
 function topicsDir() {
   return join4(getStorageRoot(), "topics");
 }
@@ -994,11 +994,11 @@ function recoverAllCloseTransactions() {
   const dir = join4(topicsDir(), ".transactions");
   if (!existsSync3(dir))
     return;
-  for (const file of readdirSync(dir).filter((file2) => file2.endsWith(".close.json")))
+  for (const file of readdirSync(dir).filter((file) => file.endsWith(".close.json")))
     recoverCloseTransaction(file.slice(0, -".close.json".length));
 }
 function recoverOpenTransactions() {
-  for (const file of readdirSync(topicsDir()).filter((file2) => file2.endsWith(".jsonl"))) {
+  for (const file of readdirSync(topicsDir()).filter((file) => file.endsWith(".jsonl"))) {
     const topicId = file.slice(0, -".jsonl".length);
     const boardPath = topicBoardMdPath(topicId);
     if (existsSync3(boardPath))
@@ -1084,7 +1084,7 @@ function generateDecisions(topic, notes) {
 ## Key Findings & Decisions
 
 `;
-  for (const n of notes.filter((n2) => n2.priority === "critical"))
+  for (const n of notes.filter((n) => n.priority === "critical"))
     md += `### Decision from ${n.author} (seq #${n.seq})
 
 ${n.content}
@@ -1103,7 +1103,7 @@ ${last.content}
 *Generated at topic close. Use \`distill\` to elevate conclusions to knowledge.*
 `;
 }
-// ../pi-harness/core/knowledge/index.ts
+// core/knowledge/index.ts
 import {
   existsSync as existsSync4,
   lstatSync,
@@ -1121,9 +1121,9 @@ var RETIRED_STATUS_BY_TAG = {
   DEPRECATED: "deprecated"
 };
 var STATUS_TAG_PATTERN = /^\[(SUPERSEDED|ARCHIVED|DEPRECATED)\]\s*/i;
-function assertScope(scope2) {
-  if (scope2 !== "project" && scope2 !== "workspace" && scope2 !== "global") {
-    throw new Error(`Invalid knowledge scope "${String(scope2)}"`);
+function assertScope(scope) {
+  if (scope !== "project" && scope !== "workspace" && scope !== "global") {
+    throw new Error(`Invalid knowledge scope "${String(scope)}"`);
   }
 }
 function getProjectRoot(startDir = process.cwd()) {
@@ -1141,18 +1141,18 @@ function getWorkspaceRoot(startDir = process.cwd()) {
     current = parent;
   }
 }
-function getKnowledgeRoot(scope2 = "project") {
-  assertScope(scope2);
+function getKnowledgeRoot(scope = "project") {
+  assertScope(scope);
   const dshRoot = scopedProjectRoot();
-  if (dshRoot !== undefined) return dshKnowledgeRoot(dshRoot, scope2);
-  if (scope2 === "global")
+  if (dshRoot !== undefined) return dshKnowledgeRoot(dshRoot, scope);
+  if (scope === "global")
     return join5(homedir(), ".pi-harness", "knowledge");
-  if (scope2 === "workspace")
+  if (scope === "workspace")
     return join5(getWorkspaceRoot(), "knowledge");
   return join5(getProjectRoot(), "knowledge");
 }
-function getIndexPath(scope2) {
-  return join5(getKnowledgeRoot(scope2), "index.md");
+function getIndexPath(scope) {
+  return join5(getKnowledgeRoot(scope), "index.md");
 }
 function isSymlink(path) {
   try {
@@ -1176,7 +1176,7 @@ function assertNoSymlinkComponents(root, fullPath) {
     }
   }
 }
-function resolveEntryPath(entryPath, scope2) {
+function resolveEntryPath(entryPath, scope) {
   if (typeof entryPath !== "string" || entryPath.trim() === "") {
     throw new Error("Knowledge entry path is required");
   }
@@ -1186,12 +1186,12 @@ function resolveEntryPath(entryPath, scope2) {
   if (isAbsolute(entryPath)) {
     throw new Error(`Knowledge entry path must be relative: "${entryPath}"`);
   }
-  const root = getKnowledgeRoot(scope2);
+  const root = getKnowledgeRoot(scope);
   const fullPath = resolve(root, entryPath);
   const rel = relative(root, fullPath);
   const outsideRoot = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
   if (!rel || outsideRoot) {
-    throw new Error(`Knowledge entry path escapes the ${scope2} root: "${entryPath}"`);
+    throw new Error(`Knowledge entry path escapes the ${scope} root: "${entryPath}"`);
   }
   if (rel === "index.md") {
     throw new Error('"index.md" is reserved for the knowledge index');
@@ -1219,9 +1219,9 @@ function recordKnowledgeEvent(details) {
     appendEvent("distill", details);
   } catch {}
 }
-function getIndex(scope2 = "project") {
-  const indexPath = getIndexPath(scope2);
-  assertNoSymlinkComponents(getKnowledgeRoot(scope2), indexPath);
+function getIndex(scope = "project") {
+  const indexPath = getIndexPath(scope);
+  assertNoSymlinkComponents(getKnowledgeRoot(scope), indexPath);
   if (!existsSync4(indexPath))
     return [];
   const content = readFileSync3(indexPath, "utf-8");
@@ -1244,32 +1244,32 @@ function getIndex(scope2 = "project") {
   }
   return entries;
 }
-function auditIndex(scope2 = "project") {
-  return getIndex(scope2).flatMap((entry) => {
+function auditIndex(scope = "project") {
+  return getIndex(scope).flatMap((entry) => {
     try {
-      const fullPath = resolveEntryPath(entry.path, scope2);
+      const fullPath = resolveEntryPath(entry.path, scope);
       return existsSync4(fullPath) ? [] : [{ path: entry.path, reason: "missing" }];
     } catch (error) {
       return [{ path: entry.path, reason: "invalid", detail: error?.message }];
     }
   });
 }
-function getEntry(entryPath, scope2 = "project") {
-  const fullPath = resolveEntryPath(entryPath, scope2);
+function getEntry(entryPath, scope = "project") {
+  const fullPath = resolveEntryPath(entryPath, scope);
   if (!existsSync4(fullPath))
     return null;
   return readFileSync3(fullPath, "utf-8");
 }
-function addEntry(entryPath, content, sourceLink, description, scope2 = "project") {
+function addEntry(entryPath, content, sourceLink, description, scope = "project") {
   assertSingleLine(sourceLink, "Source link");
   assertSingleLine(description, "Description");
-  const fullPath = resolveEntryPath(entryPath, scope2);
+  const fullPath = resolveEntryPath(entryPath, scope);
   if (existsSync4(fullPath)) {
     throw new Error(`Entry "${entryPath}" already exists. Use markConflict() if the new finding contradicts it, or choose a different path.`);
   }
   const dir = dirname2(fullPath);
   mkdirSync3(dir, { recursive: true });
-  assertNoSymlinkComponents(getKnowledgeRoot(scope2), fullPath);
+  assertNoSymlinkComponents(getKnowledgeRoot(scope), fullPath);
   const entryContent = `${content.trim()}
 
 ---
@@ -1278,7 +1278,7 @@ function addEntry(entryPath, content, sourceLink, description, scope2 = "project
 `;
   writeFileSync2(fullPath, entryContent, { encoding: "utf-8", flag: "wx" });
   try {
-    updateIndex(entryPath, description, scope2);
+    updateIndex(entryPath, description, scope);
   } catch (error) {
     if (existsSync4(fullPath))
       unlinkSync2(fullPath);
@@ -1288,15 +1288,15 @@ function addEntry(entryPath, content, sourceLink, description, scope2 = "project
     action: "add_entry",
     path: entryPath,
     source: sourceLink,
-    scope: scope2
+    scope
   });
 }
-function markConflict(existingPath, newSourceLink, conflictDescription, scope2 = "project") {
+function markConflict(existingPath, newSourceLink, conflictDescription, scope = "project") {
   assertSingleLine(newSourceLink, "Source link");
   if (!conflictDescription || conflictDescription.trim() === "") {
     throw new Error("Conflict description is required");
   }
-  const fullPath = resolveEntryPath(existingPath, scope2);
+  const fullPath = resolveEntryPath(existingPath, scope);
   if (!existsSync4(fullPath)) {
     throw new Error(`Entry "${existingPath}" not found — cannot mark conflict`);
   }
@@ -1316,12 +1316,12 @@ function markConflict(existingPath, newSourceLink, conflictDescription, scope2 =
     action: "mark_conflict",
     path: existingPath,
     newSource: newSourceLink,
-    scope: scope2
+    scope
   });
 }
-function updateIndex(entryPath, description, scope2) {
-  const indexPath = getIndexPath(scope2);
-  const root = getKnowledgeRoot(scope2);
+function updateIndex(entryPath, description, scope) {
+  const indexPath = getIndexPath(scope);
+  const root = getKnowledgeRoot(scope);
   assertNoSymlinkComponents(root, indexPath);
   mkdirSync3(root, { recursive: true });
   assertNoSymlinkComponents(root, indexPath);
@@ -1347,28 +1347,1170 @@ function updateIndex(entryPath, description, scope2) {
 `;
   atomicWrite(indexPath, nextContent);
 }
+// core/field/index.ts
+import {
+  appendFileSync as appendFileSync3,
+  existsSync as existsSync5,
+  linkSync as linkSync2,
+  mkdirSync as mkdirSync4,
+  readdirSync as readdirSync2,
+  readFileSync as readFileSync4,
+  renameSync as renameSync3,
+  statSync,
+  unlinkSync as unlinkSync3,
+  writeFileSync as writeFileSync3
+} from "node:fs";
+import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+import { hostname } from "node:os";
+import { basename, dirname as dirname3, join as join6, relative as relative2, resolve as resolve2 } from "node:path";
+var PULSE_KINDS = [
+  "echo",
+  "need",
+  "conflict",
+  "breach",
+  "artifact"
+];
+var CROSS_HOST_STALE_MS = 10 * 60 * 1000;
+var SAME_HOST_PRESENCE_STALE_MS = 30 * 60 * 1000;
+var LOCK_TIMEOUT_MS = 5000;
+var MAX_RECENT_TARGETS = 8;
+var lockWait2 = new Int32Array(new SharedArrayBuffer(4));
+function currentHostTag() {
+  return `${process.platform}:${hostname()}`;
+}
+function processStartIdentity2(pid) {
+  try {
+    const raw = readFileSync4(`/proc/${pid}/stat`, "utf-8").trim();
+    const closeParen = raw.lastIndexOf(")");
+    if (closeParen === -1)
+      return null;
+    const rest = raw.slice(closeParen + 2).split(" ");
+    return rest[19] ? `linux-start:${rest[19]}` : null;
+  } catch {
+    return null;
+  }
+}
+function ownerIsProvablyDead2(pid, processStart, hostTag, updatedAt) {
+  if (!Number.isInteger(pid) || pid <= 0)
+    return true;
+  if (hostTag && hostTag !== currentHostTag()) {
+    if (typeof updatedAt === "number" && Date.now() - updatedAt > CROSS_HOST_STALE_MS) {
+      return true;
+    }
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    return error?.code === "ESRCH";
+  }
+  if (processStart?.startsWith("linux-start:")) {
+    const current = processStartIdentity2(pid);
+    return current !== null && current !== processStart;
+  }
+  return false;
+}
+function ensureDir2(dir) {
+  if (!existsSync5(dir))
+    mkdirSync4(dir, { recursive: true });
+}
+function sha256Short(value, len = 10) {
+  return createHash2("sha256").update(value, "utf-8").digest("hex").slice(0, len);
+}
+function oneLine(value, maxChars = 220) {
+  const flat = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (flat.length <= maxChars)
+    return flat;
+  return `${flat.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+function safeFileKey(raw) {
+  const cleaned = String(raw ?? "").trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
+  const hash = sha256Short(String(raw ?? ""), 8);
+  return `${cleaned || "item"}-${hash}`;
+}
+function assertFieldId(fieldId) {
+  if (typeof fieldId !== "string" || fieldId.length === 0 || /[\\/\0]/.test(fieldId) || fieldId === "." || fieldId === ".." || fieldId.startsWith(".")) {
+    throw new Error("Field ID must be a non-empty single path segment without slashes or leading dot");
+  }
+}
+function resolveFieldStorageRoot(overrideRoot) {
+  const root = overrideRoot?.trim() || process.env.PI_FIELD_ROOT?.trim() || getStorageRoot();
+  ensureDir2(root);
+  return root;
+}
+function fieldsDir(storageRoot) {
+  const dir = join6(resolveFieldStorageRoot(storageRoot), "fields");
+  ensureDir2(dir);
+  return dir;
+}
+function fieldDir(fieldId, storageRoot) {
+  assertFieldId(fieldId);
+  return join6(fieldsDir(storageRoot), fieldId);
+}
+function metaPath(fieldId, storageRoot) {
+  return join6(fieldDir(fieldId, storageRoot), "meta.json");
+}
+function pulsesPath(fieldId, storageRoot) {
+  return join6(fieldDir(fieldId, storageRoot), "pulses.jsonl");
+}
+function presenceDir(fieldId, storageRoot) {
+  return join6(fieldDir(fieldId, storageRoot), "presence");
+}
+function resourcesDir(fieldId, storageRoot) {
+  return join6(fieldDir(fieldId, storageRoot), "resources");
+}
+function artifactsDir(fieldId, storageRoot) {
+  const dir = join6(fieldDir(fieldId, storageRoot), "artifacts");
+  ensureDir2(dir);
+  return dir;
+}
+function atomicWrite2(target, content) {
+  ensureDir2(resolve2(target, ".."));
+  const temp = `${target}.tmp.${process.pid}.${randomUUID2()}`;
+  try {
+    writeFileSync3(temp, content, { encoding: "utf-8", flag: "wx" });
+    for (let attempt = 0;attempt < 4; attempt += 1) {
+      try {
+        renameSync3(temp, target);
+        return;
+      } catch (err) {
+        if ((err?.code === "EPERM" || err?.code === "EBUSY") && attempt < 3) {
+          Atomics.wait(lockWait2, 0, 0, 10 * (attempt + 1));
+          continue;
+        }
+        throw err;
+      }
+    }
+  } finally {
+    if (existsSync5(temp)) {
+      try {
+        unlinkSync3(temp);
+      } catch {}
+    }
+  }
+}
+function readJsonSafe(path) {
+  try {
+    return JSON.parse(readFileSync4(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function withFileLock(targetPath, fn, timeoutMs = LOCK_TIMEOUT_MS) {
+  const lockPath = `${targetPath}.lock`;
+  ensureDir2(resolve2(lockPath, ".."));
+  const start = Date.now();
+  const hostTag = currentHostTag();
+  const selfStart = processStartIdentity2(process.pid);
+  while (true) {
+    const token = randomUUID2();
+    const record = {
+      version: 1,
+      pid: process.pid,
+      processStart: selfStart,
+      hostTag,
+      token,
+      acquiredAt: Date.now()
+    };
+    const candidate = `${lockPath}.cand.${process.pid}.${token}`;
+    let acquired = false;
+    try {
+      writeFileSync3(candidate, JSON.stringify(record), { encoding: "utf-8", flag: "wx", mode: 384 });
+      try {
+        linkSync2(candidate, lockPath);
+        acquired = true;
+      } catch (error) {
+        if (error?.code !== "EEXIST")
+          throw error;
+      }
+    } finally {
+      if (existsSync5(candidate)) {
+        try {
+          unlinkSync3(candidate);
+        } catch {}
+      }
+    }
+    if (acquired) {
+      try {
+        return fn();
+      } finally {
+        const current = readJsonSafe(lockPath);
+        if (current?.token === token) {
+          try {
+            unlinkSync3(lockPath);
+          } catch {}
+        }
+      }
+    }
+    const held = readJsonSafe(lockPath);
+    if (held && ownerIsProvablyDead2(held.pid, held.processStart, held.hostTag, held.acquiredAt)) {
+      const check = readJsonSafe(lockPath);
+      if (check?.token === held.token) {
+        try {
+          unlinkSync3(lockPath);
+        } catch {}
+      }
+      continue;
+    }
+    if (Date.now() - start >= timeoutMs) {
+      throw new Error(`Timed out waiting for field lock: ${lockPath}`);
+    }
+    Atomics.wait(lockWait2, 0, 0, 15);
+  }
+}
+function openField(fieldId, goal, options = {}) {
+  assertFieldId(fieldId);
+  const trimmedGoal = String(goal ?? "").trim();
+  if (!trimmedGoal)
+    throw new Error("Field requires a non-empty goal");
+  const dir = fieldDir(fieldId, options.storageRoot);
+  ensureDir2(dir);
+  ensureDir2(presenceDir(fieldId, options.storageRoot));
+  ensureDir2(resourcesDir(fieldId, options.storageRoot));
+  ensureDir2(artifactsDir(fieldId, options.storageRoot));
+  const mPath = metaPath(fieldId, options.storageRoot);
+  return withFileLock(mPath, () => {
+    const existing = readJsonSafe(mPath);
+    if (existing)
+      return existing;
+    const meta = {
+      version: 1,
+      id: fieldId,
+      goal: trimmedGoal,
+      ...options.topic ? { topic: options.topic } : {},
+      mode: options.mode === "worktree" ? "worktree" : "shared",
+      status: "active",
+      rootCwd: options.rootCwd ?? process.cwd(),
+      ...options.createdBy ? { createdBy: options.createdBy } : {},
+      createdAt: Date.now()
+    };
+    atomicWrite2(mPath, JSON.stringify(meta, null, 2) + `
+`);
+    return meta;
+  });
+}
+function getFieldMeta(fieldId, storageRoot) {
+  try {
+    assertFieldId(fieldId);
+  } catch {
+    return null;
+  }
+  return readJsonSafe(metaPath(fieldId, storageRoot));
+}
+function listFields(storageRoot) {
+  const dir = fieldsDir(storageRoot);
+  if (!existsSync5(dir))
+    return [];
+  const results = [];
+  for (const entry of readdirSync2(dir)) {
+    const meta = readJsonSafe(join6(dir, entry, "meta.json"));
+    if (meta && meta.id === entry)
+      results.push(meta);
+  }
+  return results.sort((a, b) => b.createdAt - a.createdAt);
+}
+function closeField(fieldId, options = {}) {
+  assertFieldId(fieldId);
+  const mPath = metaPath(fieldId, options.storageRoot);
+  if (!existsSync5(mPath))
+    return null;
+  return withFileLock(mPath, () => {
+    const current = readJsonSafe(mPath);
+    if (!current)
+      return null;
+    const updated = {
+      ...current,
+      status: options.status ?? "closed",
+      closedAt: Date.now()
+    };
+    atomicWrite2(mPath, JSON.stringify(updated, null, 2) + `
+`);
+    return updated;
+  });
+}
+function mergeTargets(existing, incoming) {
+  const merged = [];
+  const seen = new Set;
+  for (const item of [...incoming, ...existing]) {
+    const clean = String(item ?? "").trim();
+    if (!clean || seen.has(clean))
+      continue;
+    seen.add(clean);
+    merged.push(clean);
+    if (merged.length >= MAX_RECENT_TARGETS)
+      break;
+  }
+  return merged;
+}
+function updatePresence(fieldId, update, storageRoot) {
+  assertFieldId(fieldId);
+  const dir = presenceDir(fieldId, storageRoot);
+  ensureDir2(dir);
+  const file = join6(dir, `${safeFileKey(update.actorId)}.json`);
+  const prev = readJsonSafe(file);
+  const focusArea = update.focusArea ?? prev?.focusArea;
+  const next = {
+    actorId: update.actorId,
+    label: update.label ?? prev?.label ?? update.actorId,
+    ...update.lens ?? prev?.lens ? { lens: update.lens ?? prev?.lens } : {},
+    pid: process.pid,
+    processStart: processStartIdentity2(process.pid),
+    hostTag: currentHostTag(),
+    cwd: update.cwd ?? prev?.cwd ?? process.cwd(),
+    heading: oneLine(update.heading ?? prev?.heading ?? "exploring", 160),
+    ...focusArea ? { focusArea } : {},
+    recentTargets: mergeTargets(prev?.recentTargets ?? [], update.targets ?? []),
+    stepCount: (prev?.stepCount ?? 0) + (update.incrementStep ? 1 : 0),
+    ...update.lastTool ?? prev?.lastTool ? { lastTool: update.lastTool ?? prev?.lastTool } : {},
+    ...update.lastToolError !== undefined ? { lastToolError: update.lastToolError } : prev?.lastToolError !== undefined ? { lastToolError: prev.lastToolError } : {},
+    updatedAt: Date.now(),
+    status: update.status ?? "active"
+  };
+  atomicWrite2(file, JSON.stringify(next) + `
+`);
+  return next;
+}
+function latestFieldActivityMs(fieldId, actorId, storageRoot) {
+  let latest = 0;
+  const probe = (path) => {
+    try {
+      const mtime = statSync(path).mtimeMs;
+      if (mtime > latest)
+        latest = mtime;
+    } catch {}
+  };
+  try {
+    assertFieldId(fieldId);
+    if (actorId) {
+      probe(join6(presenceDir(fieldId, storageRoot), `${safeFileKey(actorId)}.json`));
+    }
+    probe(pulsesPath(fieldId, storageRoot));
+  } catch {}
+  return latest;
+}
+function markPresenceDone(fieldId, actorId, status = "done", storageRoot) {
+  try {
+    assertFieldId(fieldId);
+    const file = join6(presenceDir(fieldId, storageRoot), `${safeFileKey(actorId)}.json`);
+    const prev = readJsonSafe(file);
+    if (!prev)
+      return;
+    atomicWrite2(file, JSON.stringify({ ...prev, status, updatedAt: Date.now() }) + `
+`);
+  } catch {}
+}
+function listPresences(fieldId, options = {}) {
+  assertFieldId(fieldId);
+  const dir = presenceDir(fieldId, options.storageRoot);
+  if (!existsSync5(dir))
+    return [];
+  const out = [];
+  const now = Date.now();
+  for (const name of readdirSync2(dir)) {
+    if (!name.endsWith(".json"))
+      continue;
+    const item = readJsonSafe(join6(dir, name));
+    if (!item || typeof item.actorId !== "string")
+      continue;
+    const dead = ownerIsProvablyDead2(item.pid, item.processStart, item.hostTag, item.updatedAt);
+    const stale = now - item.updatedAt > SAME_HOST_PRESENCE_STALE_MS;
+    if (!options.includeInactive && (item.status !== "active" || dead || stale))
+      continue;
+    out.push(dead && item.status === "active" ? { ...item, status: "done" } : item);
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+function normalizeResourceName(raw) {
+  const clean = String(raw ?? "").trim().toLowerCase().replace(/\s+/g, "-");
+  if (!clean)
+    throw new Error("Resource name must be non-empty");
+  return clean;
+}
+function claimResource(fieldId, resource, holder, storageRoot) {
+  assertFieldId(fieldId);
+  const norm = normalizeResourceName(resource);
+  const purpose = oneLine(holder.purpose || "exclusive access", 160);
+  const dir = resourcesDir(fieldId, storageRoot);
+  ensureDir2(dir);
+  const file = join6(dir, `${safeFileKey(norm)}.json`);
+  return withFileLock(file, () => {
+    const existing = readJsonSafe(file);
+    if (existing && existing.holderId !== holder.actorId && !ownerIsProvablyDead2(existing.pid, existing.processStart, existing.hostTag, existing.updatedAt)) {
+      return { acquired: false, lease: existing };
+    }
+    const now = Date.now();
+    const lease = {
+      resource: norm,
+      holderId: holder.actorId,
+      holderLabel: holder.label ?? holder.actorId,
+      pid: process.pid,
+      processStart: processStartIdentity2(process.pid),
+      hostTag: currentHostTag(),
+      purpose,
+      acquiredAt: existing?.holderId === holder.actorId ? existing.acquiredAt : now,
+      updatedAt: now
+    };
+    atomicWrite2(file, JSON.stringify(lease) + `
+`);
+    return { acquired: true, lease };
+  });
+}
+function releaseResource(fieldId, resource, actorId, storageRoot) {
+  assertFieldId(fieldId);
+  const norm = normalizeResourceName(resource);
+  const file = join6(resourcesDir(fieldId, storageRoot), `${safeFileKey(norm)}.json`);
+  if (!existsSync5(file))
+    return false;
+  return withFileLock(file, () => {
+    const existing = readJsonSafe(file);
+    if (!existing)
+      return false;
+    if (existing.holderId !== actorId && !ownerIsProvablyDead2(existing.pid, existing.processStart, existing.hostTag, existing.updatedAt)) {
+      return false;
+    }
+    try {
+      unlinkSync3(file);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+function releaseAllResources(fieldId, actorId, storageRoot) {
+  const released = [];
+  try {
+    assertFieldId(fieldId);
+    const dir = resourcesDir(fieldId, storageRoot);
+    if (!existsSync5(dir))
+      return released;
+    for (const name of readdirSync2(dir)) {
+      if (!name.endsWith(".json"))
+        continue;
+      const item = readJsonSafe(join6(dir, name));
+      if (item?.holderId === actorId) {
+        if (releaseResource(fieldId, item.resource, actorId, storageRoot)) {
+          released.push(item.resource);
+        }
+      }
+    }
+  } catch {}
+  return released;
+}
+function listResources(fieldId, storageRoot) {
+  assertFieldId(fieldId);
+  const dir = resourcesDir(fieldId, storageRoot);
+  if (!existsSync5(dir))
+    return [];
+  const active = [];
+  for (const name of readdirSync2(dir)) {
+    if (!name.endsWith(".json"))
+      continue;
+    const file = join6(dir, name);
+    const item = readJsonSafe(file);
+    if (!item || typeof item.resource !== "string")
+      continue;
+    if (ownerIsProvablyDead2(item.pid, item.processStart, item.hostTag, item.updatedAt)) {
+      continue;
+    }
+    active.push(item);
+  }
+  return active.sort((a, b) => a.resource.localeCompare(b.resource));
+}
+function readPulses(fieldId, sinceSeq, storageRoot) {
+  assertFieldId(fieldId);
+  const path = pulsesPath(fieldId, storageRoot);
+  if (!existsSync5(path))
+    return [];
+  const raw = readFileSync4(path, "utf-8");
+  const pulses = [];
+  for (const line of raw.split(`
+`)) {
+    const trimmed = line.trim();
+    if (!trimmed)
+      continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Number.isInteger(parsed?.seq) && typeof parsed?.fact === "string") {
+        pulses.push(parsed);
+      }
+    } catch {}
+  }
+  return sinceSeq === undefined ? pulses : pulses.filter((p) => p.seq > sinceSeq);
+}
+function postPulse(fieldId, input, storageRoot) {
+  assertFieldId(fieldId);
+  const fact = String(input.fact ?? "").trim();
+  if (!fact)
+    throw new Error("Pulse requires a non-empty objective fact");
+  const kind = input.kind ?? "echo";
+  if (!PULSE_KINDS.includes(kind)) {
+    throw new Error(`Unknown pulse kind "${kind}" (expected: ${PULSE_KINDS.join(", ")})`);
+  }
+  const pPath = pulsesPath(fieldId, storageRoot);
+  ensureDir2(resolve2(pPath, ".."));
+  const pulse = withFileLock(pPath, () => {
+    const existing = readPulses(fieldId, undefined, storageRoot);
+    const seq = (existing.at(-1)?.seq ?? 0) + 1;
+    const record = {
+      seq,
+      timestamp: Date.now(),
+      actorId: input.actorId,
+      actorLabel: input.actorLabel ?? input.actorId,
+      ...input.lens ? { lens: input.lens } : {},
+      kind,
+      fact,
+      ...input.anchor?.trim() ? { anchor: oneLine(input.anchor, 180) } : {},
+      ...input.next?.trim() ? { next: oneLine(input.next, 180) } : {}
+    };
+    appendFileSync3(pPath, JSON.stringify(record) + `
+`, "utf-8");
+    return record;
+  });
+  if (kind === "breach") {
+    const mPath = metaPath(fieldId, storageRoot);
+    if (existsSync5(mPath)) {
+      withFileLock(mPath, () => {
+        const meta = readJsonSafe(mPath);
+        if (!meta)
+          return;
+        atomicWrite2(mPath, JSON.stringify({
+          ...meta,
+          status: "breached",
+          breachedAt: pulse.timestamp,
+          breachedBy: pulse.actorLabel,
+          breachSeq: pulse.seq
+        }, null, 2) + `
+`);
+      });
+    }
+  }
+  try {
+    updatePresence(fieldId, {
+      actorId: input.actorId,
+      label: input.actorLabel,
+      lens: input.lens,
+      heading: input.next || input.anchor || oneLine(fact, 120),
+      targets: input.anchor ? [input.anchor] : []
+    }, storageRoot);
+  } catch {}
+  return pulse;
+}
+function listArtifacts(fieldId, storageRoot) {
+  assertFieldId(fieldId);
+  const dir = join6(fieldDir(fieldId, storageRoot), "artifacts");
+  if (!existsSync5(dir))
+    return [];
+  const entries = [];
+  for (const name of readdirSync2(dir).sort()) {
+    try {
+      const info = statSync(join6(dir, name));
+      entries.push(info.isDirectory() ? `${name}/` : `${name} (${info.size}B)`);
+    } catch {
+      entries.push(name);
+    }
+  }
+  return entries;
+}
+function normalizePathTarget(rawPath, rootCwd) {
+  const clean = rawPath.trim();
+  if (!clean)
+    return "";
+  try {
+    const abs = resolve2(rootCwd, clean);
+    const rel = relative2(resolve2(rootCwd), abs);
+    if (rel && !rel.startsWith("..") && !rel.startsWith("/")) {
+      return rel.replace(/\\/g, "/");
+    }
+  } catch {}
+  return clean.length > 96 ? `…/${basename(clean)}` : clean;
+}
+function dirOfTarget(target) {
+  const clean = target.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!clean || clean === ".")
+    return;
+  const parent = dirname3(clean);
+  if (parent && parent !== "." && parent !== "/")
+    return parent;
+  return;
+}
+function focusAreaFromTarget(target) {
+  const clean = target.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!clean || clean === ".")
+    return;
+  return dirOfTarget(clean) ?? clean;
+}
+function extractToolTrace(toolName, input = {}, rootCwd = process.cwd()) {
+  const tool = String(toolName ?? "").toLowerCase();
+  const rawPath = String(input.file_path ?? input.path ?? "").trim();
+  const normalizedPath = rawPath ? normalizePathTarget(rawPath, rootCwd) : "";
+  if (tool === "field") {
+    const action = String(input.action ?? "pulse");
+    const detail = oneLine(String(input.anchor ?? input.resource ?? input.fact ?? ""), 64);
+    return {
+      heading: detail ? `field:${action} ${detail}` : `field:${action}`,
+      targets: []
+    };
+  }
+  if (normalizedPath) {
+    const query = oneLine(String(input.pattern ?? input.query ?? ""), 40);
+    const heading = query ? `${tool} "${query}" in ${normalizedPath}` : `${tool} ${normalizedPath}`;
+    return {
+      heading,
+      targets: [normalizedPath],
+      focusArea: focusAreaFromTarget(normalizedPath)
+    };
+  }
+  const command = oneLine(String(input.command ?? ""), 88);
+  if (command) {
+    const dirHit = /(?:^|\s)([a-zA-Z0-9._-]+\/[a-zA-Z0-9._/-]+)/.exec(command);
+    const dirTarget = dirHit ? normalizePathTarget(dirHit[1], rootCwd) : "";
+    const focusArea = dirTarget ? focusAreaFromTarget(dirTarget) : undefined;
+    return {
+      heading: `${tool}: ${command}`,
+      targets: dirTarget ? [dirTarget] : [],
+      ...focusArea ? { focusArea } : {}
+    };
+  }
+  const query = oneLine(String(input.pattern ?? input.query ?? ""), 64);
+  if (query) {
+    return {
+      heading: `${tool} "${query}"`,
+      targets: [],
+      focusArea: `q:${query.slice(0, 24)}`
+    };
+  }
+  return { heading: tool, targets: [] };
+}
+function emptySidelineCursor() {
+  return {
+    lastPulseSeq: 0,
+    lastResourcesSig: "",
+    lastPeersSig: "",
+    lastOverlapSig: "",
+    seenBreachSeqs: []
+  };
+}
+function formatAgeSec(ts, now = Date.now()) {
+  const sec = Math.max(0, Math.round((now - ts) / 1000));
+  if (sec < 60)
+    return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  return `${min}m${sec % 60}s`;
+}
+function formatPulseLine(pulse, options = {}) {
+  const lensTag = pulse.lens ? `/${pulse.lens}` : "";
+  const anchor = pulse.anchor ? ` (${pulse.anchor})` : "";
+  const fact = options.full ? String(pulse.fact ?? "").replace(/\s+/g, " ").trim() : oneLine(pulse.fact, 360);
+  const next = pulse.next ? ` -> next: ${options.full ? String(pulse.next).replace(/\s+/g, " ").trim() : oneLine(pulse.next, 180)}` : "";
+  const kindTag = pulse.kind === "breach" ? "BREACH!" : pulse.kind;
+  return `#${pulse.seq} [${pulse.actorLabel}${lensTag}|${kindTag}]${anchor} ${fact}${next}`;
+}
+function buildSidelineDelta(fieldId, selfActorId, cursor, options = {}) {
+  assertFieldId(fieldId);
+  const now = options.now ?? Date.now();
+  const allPulses = readPulses(fieldId, undefined, options.storageRoot);
+  const latestSeq = allPulses.at(-1)?.seq ?? cursor.lastPulseSeq;
+  const newPulses = allPulses.filter((p) => p.seq > cursor.lastPulseSeq && p.actorId !== selfActorId);
+  const unseenBreaches = allPulses.filter((p) => p.kind === "breach" && p.actorId !== selfActorId && !cursor.seenBreachSeqs.includes(p.seq));
+  const livePeers = listPresences(fieldId, { storageRoot: options.storageRoot }).filter((p) => p.actorId !== selfActorId);
+  const resources = listResources(fieldId, options.storageRoot);
+  const currentTargetSet = new Set((options.currentTargets ?? []).filter((t) => t && t !== "."));
+  const currentSubdirSet = new Set([...currentTargetSet].map((t) => dirOfTarget(t)).filter((d) => Boolean(d && d.includes("/"))));
+  const overlaps = [];
+  if (currentTargetSet.size > 0) {
+    for (const peer of livePeers) {
+      let matchedTarget;
+      for (const target of peer.recentTargets) {
+        if (currentTargetSet.has(target)) {
+          matchedTarget = target;
+          break;
+        }
+      }
+      if (!matchedTarget && currentSubdirSet.size > 0) {
+        const peerArea = (peer.focusArea ?? dirOfTarget(peer.recentTargets[0] ?? ""))?.replace(/\/+$/, "");
+        if (peerArea && currentSubdirSet.has(peerArea)) {
+          matchedTarget = peerArea;
+        }
+      }
+      if (matchedTarget) {
+        overlaps.push({
+          peerId: peer.actorId,
+          peerLabel: peer.label,
+          peerLens: peer.lens,
+          target: matchedTarget,
+          ageSec: Math.max(0, Math.round((now - peer.updatedAt) / 1000))
+        });
+      }
+    }
+  }
+  const resourcesSig = resources.map((r) => `${r.resource}=${r.holderId}:${r.purpose}`).join("|");
+  const peersSig = livePeers.map((p) => `${p.actorId}:${(p.focusArea ?? focusAreaFromTarget(p.recentTargets[0] ?? "") ?? "").replace(/\/+$/, "")}`).join("|");
+  const overlapSig = overlaps.map((o) => `${o.peerId}@${o.target}`).sort().join("|");
+  const hasNewPulses = newPulses.length > 0;
+  const hasBreach = unseenBreaches.length > 0;
+  const resourcesChanged = resourcesSig !== cursor.lastResourcesSig;
+  const overlapAppeared = overlapSig.length > 0 && overlapSig !== cursor.lastOverlapSig;
+  const peersShifted = peersSig !== cursor.lastPeersSig && (livePeers.length > 0 || cursor.lastPeersSig !== "");
+  if (!hasNewPulses && !hasBreach && !resourcesChanged && !overlapAppeared && !peersShifted) {
+    return null;
+  }
+  const lines = [];
+  const range = newPulses.length > 0 ? ` #${newPulses[0].seq}..#${newPulses.at(-1).seq}` : "";
+  lines.push(`[FIELD Δ${range} | field=${fieldId}]`);
+  if (hasBreach) {
+    lines.push("BREACH WAVE — a peer verified a breakthrough (evaluate against the full goal):");
+    for (const bp of unseenBreaches) {
+      lines.push(`  >> ${formatPulseLine(bp)}`);
+    }
+  }
+  if (livePeers.length > 0) {
+    const summary = livePeers.map((p) => {
+      const lens = p.lens ? `(${p.lens})` : "";
+      return `${p.label}${lens}: ${oneLine(p.heading, 64)} [${formatAgeSec(p.updatedAt, now)}]`;
+    }).join(" | ");
+    lines.push(`LIVE: ${summary}`);
+  }
+  if (resources.length > 0) {
+    const locks = resources.map((r) => `${r.resource} -> ${r.holderLabel} (${oneLine(r.purpose, 48)})`).join(" | ");
+    lines.push(`LOCK: ${locks}`);
+  }
+  if (overlaps.length > 0) {
+    for (const o of overlaps) {
+      const lens = o.peerLens ? ` (${o.peerLens})` : "";
+      lines.push(`OVERLAP: ${o.peerLabel}${lens} also touched ${o.target} (${o.ageSec}s ago) — use an orthogonal angle if high-traction, or pivot to fresh surface.`);
+    }
+  }
+  const nonBreachNew = newPulses.filter((p) => !unseenBreaches.some((b) => b.seq === p.seq));
+  for (const p of nonBreachNew) {
+    lines.push(formatPulseLine(p));
+  }
+  const nextCursor = {
+    lastPulseSeq: latestSeq,
+    lastResourcesSig: resourcesSig,
+    lastPeersSig: peersSig,
+    lastOverlapSig: overlapSig,
+    seenBreachSeqs: [
+      ...new Set([...cursor.seenBreachSeqs, ...unseenBreaches.map((b) => b.seq)])
+    ]
+  };
+  return {
+    text: lines.join(`
+`),
+    nextCursor,
+    newPulses,
+    hasBreach,
+    breachPulses: unseenBreaches,
+    livePeers,
+    resources,
+    overlaps
+  };
+}
+function buildFieldSnapshot(fieldId, options = {}) {
+  const meta = getFieldMeta(fieldId, options.storageRoot);
+  if (!meta)
+    return `[FIELD ${fieldId}: not found]`;
+  const now = Date.now();
+  const presences = listPresences(fieldId, { storageRoot: options.storageRoot });
+  const resources = listResources(fieldId, options.storageRoot);
+  const pulses = readPulses(fieldId, undefined, options.storageRoot);
+  const artifacts = listArtifacts(fieldId, options.storageRoot);
+  const maxPulses = options.maxRecentPulses ?? 20;
+  const shown = pulses.slice(-maxPulses);
+  const omitted = pulses.length - shown.length;
+  const lines = [
+    `[FIELD SNAPSHOT | id=${meta.id} | status=${meta.status} | mode=${meta.mode}]`,
+    `GOAL: ${meta.goal}`,
+    `ARTIFACTS DIR: ${artifactsDir(fieldId, options.storageRoot)}`
+  ];
+  if (presences.length > 0) {
+    lines.push(`LIVE (${presences.length}): ` + presences.map((p) => {
+      const self = p.actorId === options.selfActorId ? "*" : "";
+      const lens = p.lens ? `(${p.lens})` : "";
+      return `${self}${p.label}${lens}: ${oneLine(p.heading, 64)} [${formatAgeSec(p.updatedAt, now)}]`;
+    }).join(" | "));
+  } else {
+    lines.push("LIVE: none");
+  }
+  if (resources.length > 0) {
+    lines.push("LOCKS: " + resources.map((r) => `${r.resource} -> ${r.holderLabel} (${r.purpose})`).join(" | "));
+  }
+  if (artifacts.length > 0) {
+    lines.push(`ARTIFACTS: ${artifacts.join(", ")}`);
+  }
+  if (shown.length > 0) {
+    lines.push(`PULSES (${omitted > 0 ? `latest ${shown.length} of ${pulses.length}` : pulses.length}):`);
+    for (const p of shown)
+      lines.push(`  ${formatPulseLine(p)}`);
+  } else {
+    lines.push("PULSES: none yet");
+  }
+  return lines.join(`
+`);
+}
+function buildCollectiveBoardSummary(fieldId, outcomes, storageRoot) {
+  const meta = getFieldMeta(fieldId, storageRoot);
+  const pulses = readPulses(fieldId, undefined, storageRoot);
+  const artifacts = listArtifacts(fieldId, storageRoot);
+  const byKind = (kind) => pulses.filter((p) => p.kind === kind);
+  const breaches = byKind("breach");
+  const conflicts = byKind("conflict");
+  const artifactPulses = byKind("artifact");
+  const echoes = byKind("echo");
+  const needs = byKind("need");
+  const statusDisplay = meta?.breachSeq ? `breached (#${meta.breachSeq} by ${meta.breachedBy ?? "peer"})` : meta?.status ?? "closed";
+  const lines = [
+    `## Live Flux Field: ${fieldId}`,
+    `- **Goal**: ${meta?.goal ?? "(unknown)"}`,
+    `- **Mode**: ${meta?.mode ?? "shared"} | **Status**: ${statusDisplay} | **Tentacles**: ${outcomes.length} | **Pulses**: ${pulses.length}`
+  ];
+  if (breaches.length > 0) {
+    lines.push("", "### Breakthroughs (Verified Environment Hits)");
+    for (const p of breaches)
+      lines.push(`- ${formatPulseLine(p, { full: true })}`);
+  }
+  if (conflicts.length > 0) {
+    lines.push("", "### Factual Conflicts (High-Gain Tension)");
+    for (const p of conflicts)
+      lines.push(`- ${formatPulseLine(p, { full: true })}`);
+  }
+  if (artifactPulses.length > 0 || artifacts.length > 0) {
+    lines.push("", `### Shared Artifacts (\`${artifactsDir(fieldId, storageRoot)}\`)`);
+    for (const p of artifactPulses)
+      lines.push(`- ${formatPulseLine(p, { full: true })}`);
+    if (artifacts.length > 0)
+      lines.push(`- Files on disk: ${artifacts.join(", ")}`);
+  }
+  if (echoes.length > 0) {
+    lines.push("", "### Objective Echoes (Lens × Observation)");
+    for (const p of echoes)
+      lines.push(`- ${formatPulseLine(p, { full: true })}`);
+  }
+  if (needs.length > 0) {
+    lines.push("", "### Open Needs / Follow-up Probes");
+    for (const p of needs)
+      lines.push(`- ${formatPulseLine(p, { full: true })}`);
+  }
+  lines.push("", "### Tentacle Summaries");
+  for (const o of outcomes) {
+    const status = o.timedOut ? "TIMED OUT" : `exit ${o.exitCode}`;
+    const metaTag = [o.lens, o.model].filter(Boolean).join(", ");
+    const wt = o.worktreeDiffStat ? `
+  - Worktree changes (${o.worktreePath}): ${oneLine(o.worktreeDiffStat, 240)}` : "";
+    const excerpt = o.output.trim() || "(no final stdout)";
+    lines.push(`- **${o.label}** [${metaTag || "default"}] (${status})${wt}
+${excerpt}`);
+  }
+  return lines.join(`
+`);
+}
+// core/field/worktree.ts
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync6, mkdirSync as mkdirSync5, rmSync } from "node:fs";
+import { join as join7 } from "node:path";
+function isGitRepository(cwd) {
+  try {
+    const out = execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return out === "true";
+  } catch {
+    return false;
+  }
+}
+function createTentacleWorktree(repoCwd, fieldId, label, storageRoot) {
+  assertFieldId(fieldId);
+  if (!isGitRepository(repoCwd)) {
+    throw new Error(`Worktree mode requires a git repository (cwd: ${repoCwd})`);
+  }
+  const safeLabel = label.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "tentacle";
+  const baseDir = join7(resolveFieldStorageRoot(storageRoot), "worktrees", fieldId);
+  mkdirSync5(baseDir, { recursive: true });
+  const wtPath = join7(baseDir, safeLabel);
+  const branch = `flux/${fieldId.slice(0, 32)}/${safeLabel}`;
+  execFileSync("git", ["worktree", "add", "--detach", wtPath, "HEAD"], {
+    cwd: repoCwd,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  return { label: safeLabel, path: wtPath, branch };
+}
+function inspectWorktreeChanges(wtPath) {
+  try {
+    const status = execFileSync("git", ["status", "--short"], {
+      cwd: wtPath,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (!status)
+      return { dirty: false, summary: "" };
+    const diffStat = execFileSync("git", ["diff", "--stat"], {
+      cwd: wtPath,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    const files = status.split(`
+`).map((l) => l.trim()).join("; ");
+    return {
+      dirty: true,
+      summary: diffStat ? `${files} | ${diffStat.split(`
+`).at(-1)?.trim() ?? ""}` : files
+    };
+  } catch {
+    return { dirty: false, summary: "" };
+  }
+}
+function removeTentacleWorktree(repoCwd, wtPath) {
+  try {
+    execFileSync("git", ["worktree", "remove", "--force", wtPath], {
+      cwd: repoCwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+  } catch {
+    if (existsSync6(wtPath)) {
+      try {
+        rmSync(wtPath, { recursive: true, force: true });
+      } catch {}
+    }
+    try {
+      execFileSync("git", ["worktree", "prune"], {
+        cwd: repoCwd,
+        stdio: ["ignore", "ignore", "ignore"]
+      });
+    } catch {}
+  }
+}
+// core/flux/index.ts
+import { existsSync as existsSync7, mkdirSync as mkdirSync6, readFileSync as readFileSync5, renameSync as renameSync4, unlinkSync as unlinkSync4, writeFileSync as writeFileSync4 } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { dirname as dirname4, join as join8 } from "node:path";
+var COGNITIVE_LENSES = [
+  {
+    id: "spine",
+    name: "Spine Trace",
+    startingBias: "Follow the most direct entry point, main execution path, or primary error chain straight inward to expose the core mechanism."
+  },
+  {
+    id: "seam",
+    name: "Seam Walker",
+    startingBias: "Bypass thick front walls; inspect boundaries, configs, handoffs, fallback/error branches, and cross-module seams where bypasses hide."
+  },
+  {
+    id: "probe",
+    name: "Empirical Probe",
+    startingBias: "Minimize static speculation; run small discriminating inputs, scripts, tests, or dynamic checks early to force concrete world feedback."
+  },
+  {
+    id: "invert",
+    name: "Falsifier",
+    startingBias: "Target the most plausible-looking assumption or early consensus; look for counterexamples, boundary failures, and hidden false negatives."
+  },
+  {
+    id: "scout",
+    name: "Context Scout",
+    startingBias: "Step back to map surrounding dependencies, environment constraints, history/knowledge entries, and cross-cutting invariants."
+  }
+];
+function resolveLens(spec) {
+  const clean = String(spec ?? "").trim();
+  const lower = clean.toLowerCase();
+  const builtin = COGNITIVE_LENSES.find((lens) => lens.id === lower || lens.name.toLowerCase() === lower);
+  if (builtin)
+    return builtin;
+  return {
+    id: lower.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "custom",
+    name: clean || "Custom Lens",
+    startingBias: clean || COGNITIVE_LENSES[0].startingBias
+  };
+}
+function pickStartingLenses(count, requested) {
+  const n = Math.max(1, Math.floor(count));
+  const out = [];
+  for (let i = 0;i < n; i += 1) {
+    if (requested && requested[i]?.trim()) {
+      out.push(resolveLens(requested[i]));
+    } else {
+      out.push(COGNITIVE_LENSES[i % COGNITIVE_LENSES.length]);
+    }
+  }
+  return out;
+}
+var FLUX_FILE = "flux.json";
+function getGlobalFluxPath(options = {}) {
+  const home = options.globalHome?.trim() || process.env.HOME?.trim() || homedir2();
+  return join8(home, ".pi-harness", FLUX_FILE);
+}
+function getProjectFluxPath() {
+  return join8(getStorageRoot(), FLUX_FILE);
+}
+function hasProjectFluxConfig() {
+  return existsSync7(getProjectFluxPath());
+}
+function cleanModels(models) {
+  if (!Array.isArray(models))
+    return [];
+  const seen = new Set;
+  const out = [];
+  for (const item of models) {
+    const trimmed = String(item ?? "").trim();
+    if (!trimmed || seen.has(trimmed))
+      continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+function readConfigFile(path, source) {
+  if (!existsSync7(path))
+    return null;
+  try {
+    const raw = JSON.parse(readFileSync5(path, "utf-8"));
+    if (!raw || typeof raw !== "object")
+      return null;
+    const mode = raw.mode === "worktree" || raw.mode === "shared" ? raw.mode : undefined;
+    const tentacles = typeof raw.tentacles === "number" && Number.isInteger(raw.tentacles) && raw.tentacles >= 1 && raw.tentacles <= 8 ? raw.tentacles : undefined;
+    return {
+      enabled: raw.enabled !== false,
+      models: cleanModels(raw.models),
+      ...tentacles !== undefined ? { tentacles } : {},
+      ...mode ? { mode } : {},
+      configured: true,
+      source
+    };
+  } catch {
+    return null;
+  }
+}
+function getFluxConfig(options = {}) {
+  const project = readConfigFile(getProjectFluxPath(), "project");
+  if (project)
+    return project;
+  const globalCfg = readConfigFile(getGlobalFluxPath(options), "global");
+  if (globalCfg)
+    return globalCfg;
+  return { enabled: true, models: [], configured: false, source: "default" };
+}
+function isFluxDisabled(config) {
+  return config.configured === true && config.enabled === false;
+}
+function setFluxConfig(config, scope = "project", options = {}) {
+  const path = scope === "global" ? getGlobalFluxPath(options) : getProjectFluxPath();
+  mkdirSync6(dirname4(path), { recursive: true });
+  const persisted = {
+    enabled: config.enabled !== false,
+    models: cleanModels(config.models),
+    ...config.tentacles !== undefined ? { tentacles: config.tentacles } : {},
+    ...config.mode ? { mode: config.mode } : {}
+  };
+  const tmpPath = `${path}.${process.pid}.tmp`;
+  writeFileSync4(tmpPath, JSON.stringify(persisted, null, 2) + `
+`, "utf-8");
+  renameSync4(tmpPath, path);
+}
+function clearProjectFluxConfig() {
+  const path = getProjectFluxPath();
+  if (!existsSync7(path))
+    return false;
+  try {
+    unlinkSync4(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function resolveFluxModels(config, currentModelSpec, overrideModels) {
+  const override = cleanModels(overrideModels);
+  if (override.length > 0)
+    return override;
+  const configured = cleanModels(config.models);
+  if (configured.length > 0)
+    return configured;
+  const active = String(currentModelSpec ?? "").trim();
+  if (active)
+    return [active];
+  return [];
+}
+// core/identity/index.ts
+var __dirname = ".";
+var DEBATE_DISCIPLINE = `
+DEBATE DISCIPLINE (strict):
+1. EVIDENCE-BASED: Every claim MUST cite specific evidence (code, docs, data, logic). Unsupported assertions are invalid.
+2. RESPOND TO EVIDENCE: Read the board before posting. If other participants have already posted, your response MUST directly address their specific arguments.
+3. NO DRIFT: Do not be persuaded by rhetoric or authority. Only change your position if presented with evidence that logically disproves your current stance. State explicitly what changed your mind.
+4. REFLECT: Before your final post, explicitly state: "What is the strongest point my opponent made that I cannot refute?" If nothing — explain why.
+5. STEEL-MAN: Before attacking an opposing view, restate it in its strongest possible form. Attack the strong version, not a straw man.
+`.trim();
+var FLUX_DISCIPLINE = `
+COLLECTIVE INTELLIGENCE DISCIPLINE (Live Flux):
+1. DRIVE BY WORLD FEEDBACK: Keep probing the real environment until you reach a verified breakthrough, genuine saturation across angles, or a concrete external block. Never stop early just to deliver a progress report.
+2. INITIAL LENS, NOT A CAGE: Your starting lens breaks initial symmetry. Follow stronger live gradients (your own or peers' in [FIELD Δ]) whenever environment feedback justifies pivoting.
+3. OBJECTIVE ECHOES ONLY: Emit \`field action=pulse\` (method -> observed echo -> next heading) on decision-changing feedback. Never output confidence scores, never grade peers, and never declare a target unconditionally dead — name the method tested so other angles remain open.
+4. COHERENT OVERLAP & EXCLUSIVE RESOURCES: Avoid repeating the exact same check a peer just ran; use orthogonal angles on high-traction leads or factual conflicts. Coordinate exclusive mutable targets via \`field action=claim\` / \`release\`, and share reusable outputs in the field artifacts dir (\`kind=artifact\`).
+5. CONVERGE ON BREACH: Emit \`field action=pulse kind=breach\` immediately on a verified breakthrough. When a peer emits \`breach\`, evaluate it against the full goal — independently verify, close remaining gaps, or finish cleanly.
+`.trim();
 export {
-  scopedProjectRoot,
-  runWithProjectRoot,
-  readNotes,
-  readArchivedTopic,
-  postNote,
-  openTopic,
-  markConflict,
-  listTopics,
-  listTopicCatalog,
-  listOpenTopics,
-  listOpenTopicCatalog,
-  hasArchivedTopic,
-  getWorkspaceRoot,
-  getTopicCatalogEntry,
-  getProjectRoot,
-  getKnowledgeRoot,
-  getIndex,
-  getEntry,
-  closeTopic,
-  auditIndex,
-  assessCloseReadiness,
+  COGNITIVE_LENSES,
+  FLUX_DISCIPLINE,
+  PULSE_KINDS,
+  addEntry,
   appendEvent,
-  addEntry
+  artifactsDir,
+  assessCloseReadiness,
+  auditIndex,
+  buildCollectiveBoardSummary,
+  buildFieldSnapshot,
+  buildSidelineDelta,
+  claimResource,
+  clearProjectFluxConfig,
+  closeField,
+  closeTopic,
+  createTentacleWorktree,
+  emptySidelineCursor,
+  extractToolTrace,
+  getEntry,
+  getFieldMeta,
+  getFluxConfig,
+  getGlobalFluxPath,
+  getIndex,
+  getKnowledgeRoot,
+  getProjectFluxPath,
+  getProjectRoot,
+  getTopicCatalogEntry,
+  getWorkspaceRoot,
+  hasArchivedTopic,
+  hasProjectFluxConfig,
+  inspectWorktreeChanges,
+  isFluxDisabled,
+  isGitRepository,
+  latestFieldActivityMs,
+  listArtifacts,
+  listFields,
+  listOpenTopicCatalog,
+  listOpenTopics,
+  listPresences,
+  listResources,
+  listTopicCatalog,
+  listTopics,
+  markConflict,
+  markPresenceDone,
+  openField,
+  openTopic,
+  pickStartingLenses,
+  postNote,
+  postPulse,
+  readArchivedTopic,
+  readNotes,
+  readPulses,
+  releaseAllResources,
+  releaseResource,
+  removeTentacleWorktree,
+  resolveFieldStorageRoot,
+  resolveFluxModels,
+  resolveLens,
+  runWithProjectRoot,
+  scopedProjectRoot,
+  setFluxConfig,
+  updatePresence
 };

@@ -6,12 +6,14 @@
   "description": "Pi Harness compatibility layer for DeepSeek Harness: shared Board, tiered knowledge base, handoff takeover, always-on doctrine, and a local (llama.cpp) reasoning-translation endpoint.",
   "exports": {
     ".": "./index.js",
+    "./commands": "./commands.js",
     "./local-translator": "./local-translator/index.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
+    "commands.js",
     "lib/*.js",
     "dist/*.js",
     "local-translator/*.js",
