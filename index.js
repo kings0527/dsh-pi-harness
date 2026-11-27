@@ -32,6 +32,22 @@ export function apply(ctx, config = {}) {
   if (settings.doctrine) {
     ctx.effect(() => ctx.systemPrompt.section({ name: 'pi-harness-doctrine', order: 900, text: doctrineText() }))
   }
+  if (typeof ctx.on === 'function') {
+    ctx.effect(() =>
+      ctx.on('llm-pi-ai/request-headers', (request, headers, next) => {
+        if (
+          request?.sessionId &&
+          !headers.has('x-session-affinity') &&
+          !headers.has('x-session-id') &&
+          (request.provider === 'qoder' ||
+            /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i.test(String(request.baseURL ?? '')))
+        ) {
+          headers.set('x-session-affinity', String(request.sessionId))
+        }
+        return next()
+      }),
+    )
+  }
   if (settings.liveField) {
     installFieldRuntime(ctx, fieldRuntime, { getProjectRoot })
     // If a host already has `commands` mounted synchronously, register `/flux` & `/field` directly;

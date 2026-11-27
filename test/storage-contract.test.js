@@ -24,7 +24,7 @@ test('both WSL UNC spellings use the same Linux home for global reads and writes
     const readRoot = knowledgeRoot(project, 'global')
     const writeRoot = core.runWithProjectRoot(project, () => core.getKnowledgeRoot('global'))
     assert.equal(writeRoot, readRoot)
-    assert.match(writeRoot, /home\\audit\\\.pi-harness\\knowledge$/)
+    assert.match(writeRoot, /home[\\/]audit[\\/]\.pi-harness[\\/]knowledge$/)
     assert.ok(!writeRoot.startsWith(homedir()))
   }
 })
